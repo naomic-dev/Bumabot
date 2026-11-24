@@ -48,12 +48,13 @@ Adventure.py    Experimental dungeon-crawler engine
 Memes.py        Chat response constants
 Settings.py     Environment-based configuration
 logging_config.py  Level-controlled logging setup
-pyproject.toml     Black formatting configuration
+pyproject.toml     Black and Ruff configuration
+requirements-dev.txt  Black and Ruff versions used by CI
 tests/
   test_adventure.py            Combat, loot, equipment, revival
   test_chatbot.py              IRC tags and command routing (fake socket)
   test_settings.py             Environment validation
-.github/workflows/ci.yml       Test matrix (Python 3.8, 3.10, 3.12)
+.github/workflows/ci.yml       Tests and lint (Python 3.8, 3.10, 3.12)
 ```
 
 - `ChatBot` owns the socket and the main read loop. `select` keeps the loop responsive while scheduled messages and Spotify polling run between incoming lines.
@@ -116,7 +117,15 @@ pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
-The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules. CI runs the same suite on Python 3.8, 3.10, and 3.12. Formatting uses Black with the configuration in `pyproject.toml`.
+The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules. CI runs the same suite on Python 3.8, 3.10, and 3.12, and a separate lint job runs Black and Ruff.
+
+Formatting and lint checks:
+
+```bash
+pip install -r requirements-dev.txt
+black --check .
+ruff check .
+```
 
 ## Design notes
 

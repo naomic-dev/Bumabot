@@ -326,7 +326,8 @@ class ChatBot:
                         )
                     else:
                         file.write("")
-        except:
+        except Exception as error:
+            log.debug("Spotify track poll failed: %s", error)
             token_info = self.oauth.get_cached_token()
 
             if token_info is None:
@@ -423,7 +424,8 @@ class ChatBot:
                 results = self.spotify.user_playlist_add_tracks(
                     user=SPOTIFY_USERNAME, playlist_id=SPOTIFY_PLAYLIST_ID, tracks=[track]
                 )
-            except:
+            except Exception as error:
+                log.warning("Spotify playlist update failed: %s", error)
                 results = None
 
             if results is not None:

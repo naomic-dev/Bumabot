@@ -9,6 +9,23 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Check formatting
+        run: black --check .
+      - name: Lint
+        run: ruff check .
+
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
