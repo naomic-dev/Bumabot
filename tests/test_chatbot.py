@@ -30,9 +30,7 @@ import ChatBot  # noqa: E402  (import after environment setup)
 class FakeSocket:
     def __init__(self):
         self.sent = []
-        self.received = [
-            b":tmi.twitch.tv 366 testbot #testchannel :End of /NAMES list\r\n"
-        ]
+        self.received = [b":tmi.twitch.tv 366 testbot #testchannel :End of /NAMES list\r\n"]
 
     def connect(self, address):
         pass
@@ -60,9 +58,9 @@ class ChatBotCommandTests(unittest.TestCase):
             self.bot = ChatBot.ChatBot()
 
         self.messages = []
-        self.bot.sendTextToChannel = lambda channel, text: self.messages.append((channel, text))
-        self.bot.printWithTimestamp = lambda text: None
-        self.bot.printWithTimestampAndChannel = lambda channel, text: None
+        self.bot.send_text_to_channel = lambda channel, text: self.messages.append((channel, text))
+        self.bot.print_with_timestamp = lambda text: None
+        self.bot.print_with_timestamp_and_channel = lambda channel, text: None
 
     def chat(self, text, display="Viewer", badges=""):
         username = display.lower()
@@ -70,7 +68,7 @@ class ChatBotCommandTests(unittest.TestCase):
             "@badges={};color=;display-name={};mod=0;subscriber=0 "
             ":{}!{}@{}.tmi.twitch.tv PRIVMSG #testchannel :{}"
         ).format(badges, display, username, username, username, text)
-        self.bot.parseLine(line)
+        self.bot.parse_line(line)
 
     def last_message(self):
         self.assertTrue(self.messages, "expected the bot to send a message")
@@ -134,18 +132,18 @@ class ChatBotCommandTests(unittest.TestCase):
 
     def test_playlist_off_clears_spotify_state(self):
         self.bot.spotify = object()
-        self.bot.currentTrack = object()
+        self.bot.current_track = object()
         self.bot.oauth = object()
 
         self.chat("!playlist off", display="testchannel")
 
         self.assertIsNone(self.bot.spotify)
-        self.assertIsNone(self.bot.currentTrack)
+        self.assertIsNone(self.bot.current_track)
         self.assertIsNone(self.bot.oauth)
 
     def test_shut_down_calls_power_down(self):
         calls = []
-        self.bot.powerDown = lambda username: calls.append(username)
+        self.bot.power_down = lambda username: calls.append(username)
 
         self.chat("@testbot shut down", display="testchannel")
 
@@ -154,15 +152,12 @@ class ChatBotCommandTests(unittest.TestCase):
     def test_broadcaster_begone_leaves_the_channel(self):
         self.chat("@testbot begone", display="testchannel", badges="broadcaster/1")
 
-        self.assertNotIn("testchannel", self.bot.channelList)
+        self.assertNotIn("testchannel", self.bot.channel_list)
 
     def test_parse_line_tags(self):
-        tags = (
-            "@badges=broadcaster/1;color=#FF0000;display-name=Naomi;"
-            "mod=1;subscriber=1"
-        )
+        tags = "@badges=broadcaster/1;color=#FF0000;display-name=Naomi;" "mod=1;subscriber=1"
 
-        info = self.bot.parseLineTags(tags)
+        info = self.bot.parse_line_tags(tags)
 
         self.assertEqual(info["username"], "Naomi")
         self.assertEqual(info["color"], "#FF0000")
@@ -181,10 +176,10 @@ class ChatBotCommandTests(unittest.TestCase):
         }
 
         self.assertEqual(
-            self.bot.parseCurrentTrackString(playing),
+            self.bot.parse_current_track_string(playing),
             '"Song" by Artist https://open.spotify.com/track/1',
         )
-        self.assertIsNone(self.bot.parseCurrentTrackString({"is_playing": False}))
+        self.assertIsNone(self.bot.parse_current_track_string({"is_playing": False}))
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ This repository is a cleaned-up reference version. Channel-specific responses an
 - **Timed messages** — periodic command hints for newcomers and optional idle-chat prompts.
 - **Spotify integration** — current-track announcements, track search, and playlist additions, with token refresh and a `spotify_now_playing.txt` overlay file.
 - **Data-driven responses** — meme and shoutout text lives in `Memes.py`, not inside the command router.
+- **Structured logging** — level-controlled logs with timestamps and module names; set `LOG_LEVEL` to `DEBUG` to see raw IRC traffic.
 - **Experimental adventure module** — a turn-based dungeon crawler with parties, bosses, loot, equipment, and death/revival rules.
 
 ## Commands
@@ -46,6 +47,8 @@ ChatBot.py      IRC socket, command routing, timed messages, Spotify
 Adventure.py    Experimental dungeon-crawler engine
 Memes.py        Chat response constants
 Settings.py     Environment-based configuration
+logging_config.py  Level-controlled logging setup
+pyproject.toml     Black formatting configuration
 tests/
   test_adventure.py            Combat, loot, equipment, revival
   test_chatbot.py              IRC tags and command routing (fake socket)
@@ -91,6 +94,7 @@ tests/
    | `TWITCH_IRC_PORT` | IRC port. Defaults to `6667`. |
    | `TWITCH_USERNAME_COLOR` | Chat color set after joining. Defaults to `blue`. |
    | `SELF_PROMOTION_MESSAGE` | Optional timed message. Leave empty to disable. |
+   | `LOG_LEVEL` | Logging threshold: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. Defaults to `INFO`. |
 
 4. Optional Spotify setup:
 
@@ -112,29 +116,28 @@ pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
-The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules. CI runs the same suite on Python 3.8, 3.10, and 3.12.
+The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules. CI runs the same suite on Python 3.8, 3.10, and 3.12. Formatting uses Black with the configuration in `pyproject.toml`.
 
 ## Design notes
 
 - **Raw IRC instead of a library.** Twitch chat is just IRC with tags. Handling `CAP REQ`, `PASS`, `NICK`, `JOIN`, `PRIVMSG`, and `PING` directly made the protocol visible and kept the dependency surface small.
 - **One socket, many timers.** The main loop uses `select` with a one-second timeout, so scheduled messages, Spotify token refreshes, and boss attacks share the same thread as chat parsing.
 - **Spotify is optional.** If the Spotify values are blank, the bot skips OAuth and reports that playlist features are off instead of failing at startup.
+- **Logging instead of print.** Command activity is logged at `INFO`; raw IRC traffic and combat rolls are `DEBUG`.
 - **Adventure is data-driven.** Bosses, drops, and items are plain data in `Adventure.py`; the engine handles combat, credit for kills, equipment, and party wipes.
 
 ## Known limitations
 
-- **The adventure module is incomplete.** No command currently creates an adventure, so its chat commands are unreachable; the engine itself is present and tested only by inspection.
+- **The adventure module is incomplete.** No command currently creates an adventure, so its chat commands are unreachable; the engine has unit tests, but the full flow is not playable from chat.
 - **Plain TCP on port 6667.** Twitch also exposes TLS on 6697; switching to `ssl` is on the roadmap.
 - **Pinned Spotipy API.** The integration targets Spotipy 2.19; newer releases removed `prompt_for_user_token` and `user_playlist_add_tracks`.
 - **Live integration is untested.** The test suite uses a fake IRC socket and a disabled Spotify client; it does not connect to Twitch or Spotify.
-- **No structured logging.** Output is plain timestamped text to stdout.
 
 ## Roadmap
 
 - [ ] Start an adventure from chat and finish the dungeon flow.
 - [ ] Move to TLS on port 6697.
 - [ ] Update the Spotify integration to the current Spotipy API.
-- [ ] Add structured logging.
 
 ## License
 

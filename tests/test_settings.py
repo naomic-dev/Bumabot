@@ -17,7 +17,11 @@ def run_settings(code, extra_env=None):
     env = os.environ.copy()
 
     for key in list(env):
-        if key.startswith("TWITCH_") or key.startswith("SPOTIFY_") or key == "SELF_PROMOTION_MESSAGE":
+        if (
+            key.startswith("TWITCH_")
+            or key.startswith("SPOTIFY_")
+            or key == "SELF_PROMOTION_MESSAGE"
+        ):
             env.pop(key, None)
 
     env["PYTHONPATH"] = REPO_ROOT + os.pathsep + env.get("PYTHONPATH", "")
@@ -35,10 +39,13 @@ def run_settings(code, extra_env=None):
 
 class SettingsTests(unittest.TestCase):
     def test_missing_token_fails_with_a_clear_message(self):
-        result = run_settings("import Settings", {
-            "TWITCH_BOT_USERNAME": "bot",
-            "TWITCH_CHANNEL": "channel",
-        })
+        result = run_settings(
+            "import Settings",
+            {
+                "TWITCH_BOT_USERNAME": "bot",
+                "TWITCH_CHANNEL": "channel",
+            },
+        )
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("TWITCH_OAUTH_TOKEN", result.stderr)
@@ -74,12 +81,14 @@ class SettingsTests(unittest.TestCase):
 
     def test_spotify_is_enabled_only_when_all_values_are_present(self):
         env = dict(BASE_ENV)
-        env.update({
-            "SPOTIFY_USERNAME": "listener",
-            "SPOTIFY_CLIENT_ID": "client-id",
-            "SPOTIFY_CLIENT_SECRET": "client-secret",
-            "SPOTIFY_PLAYLIST_ID": "playlist-id",
-        })
+        env.update(
+            {
+                "SPOTIFY_USERNAME": "listener",
+                "SPOTIFY_CLIENT_ID": "client-id",
+                "SPOTIFY_CLIENT_SECRET": "client-secret",
+                "SPOTIFY_PLAYLIST_ID": "playlist-id",
+            }
+        )
 
         result = run_settings("import Settings; print(Settings.SPOTIFY_ENABLED)", env)
 

@@ -6,6 +6,7 @@ venv/
 
 # Environment
 .env
+.cache-*
 
 # Runtime files
 spotify_now_playing.txt

@@ -1,562 +1,767 @@
-#Define a class that extends socket
+"""Twitch IRC chat bot: socket loop, command routing, and Spotify integration."""
 
-#################Imports#################
 import datetime
+import logging
 import random
 import select
 import socket
 import time
+from typing import Any, Dict, Optional
 
-#For Spotify integration
+# For Spotify integration
 import spotipy
 import spotipy.oauth2
 import spotipy.util as util
 
-#Import local files
+# Import local files
 from Settings import (
-	HOST, PORT, PASS, NICK, CHANNEL, USERNAME_COLOR, SELF_PROMOTION_MESSAGE,
-	SPOTIFY_ENABLED, SPOTIFY_USERNAME, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
-	SPOTIFY_REDIRECT_URI, SPOTIFY_PLAYLIST_ID
+    HOST,
+    PORT,
+    PASS,
+    NICK,
+    CHANNEL,
+    USERNAME_COLOR,
+    SELF_PROMOTION_MESSAGE,
+    SPOTIFY_ENABLED,
+    SPOTIFY_USERNAME,
+    SPOTIFY_CLIENT_ID,
+    SPOTIFY_CLIENT_SECRET,
+    SPOTIFY_REDIRECT_URI,
+    SPOTIFY_PLAYLIST_ID,
 )
 import Adventure
 import Memes
-#################Imports#################
 
-class ChatBot():
-	#################CONSTRUCTOR#################	
-	def __init__(self):
-		self.host = HOST
-		self.port = PORT
-		self.password = PASS
-		self.username = NICK
-		self.channel = CHANNEL
-		self.usernameColor = USERNAME_COLOR
+log = logging.getLogger(__name__)
 
-		self.socket = socket.socket()
-		
-		#Store joined channels here, remove them when leaving, check on each leave to see if we should stop reading
-		self.channelList = []
-		
-		self.adventureList = {}
-				
-		#Connect to Twitch IRC
-		self.socket.connect((self.host, self.port))
-		
-		#Tell the server we'd like to see users' membership levels
-		self.sendEncoded("CAP REQ :twitch.tv/membership")
-		#Tell the server we'd like to see tags for users' messages
-		self.sendEncoded("CAP REQ :twitch.tv/tags")
-		
-		#Send password
-		self.sendEncoded("PASS {}".format(self.password))
-		
-		#Send username
-		self.sendEncoded("NICK {}".format(self.username))
-		
-		self.joinChannel(self.channel)
-		
-		#Spotify stuff
-		self.spotify = None
-		self.currentTrack = None
-		self.oauth = None
-		
-		self.initSpotify()
-		self.tokenExpiry = (datetime.datetime.now() + datetime.timedelta(hours = 1))
 
-		self.botInfoSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
-		self.botInfoMessage = "Type !commands to see what orders you can give me."
+class ChatBot:
+    """A Twitch IRC chat bot."""
 
-		self.selfPromotionSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
-		self.selfPromotionMessage = SELF_PROMOTION_MESSAGE
-		
-		self.idleChatSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 10))
-		self.idleMessages = [
-			"Anyone in here?",
-			"ResidentSleeper",
-			"Dead chat SeemsGood",
-			"Every day is TransgenderPride Pride Day TransgenderPride in this house",
-			"PogChamp MODS ARE ASLEEP!! POST YOUR DANK MEMES PogChamp"
-		]
-	#################CONSTRUCTOR#################		
-		
-	#A function to join the chat room for a particular channel
-	def joinChannel(self, channel):
-		self.sendEncoded("JOIN #{}".format(channel))
-		
-		#Init read buffer. String containing information passed to/from socket
-		readBuffer = ""
-		
-		#Init escape variable
-		loading = True
-		
-		while loading:
-			#Read information into the socket in 1024 bit (maybe byte) increments
-			readBuffer = readBuffer + self.socket.recv(1024).decode()
-			
-			#Split the readBuffer into a stack, using linebreaks as a delimiter
-			tempBuffer = readBuffer.split("\n")
-			
-			#Pop line off the top of the stack
-			readBuffer = tempBuffer.pop()
-			
-			for line in tempBuffer:
-				self.printWithTimestamp(line)
-				
-				#Test to see if initializing is finished
-				loading = self.stillLoading(channel, line)
-		
-		self.changeUsernameColor(channel, self.usernameColor)
-		self.channelList.append(channel)
-		print("")
-		
-	#A function to test to see if a given line includes the string that Twitch uses to denote the end of initialization
-	def stillLoading(self, channel, line):
-		if("#{} :End of /NAMES list".format(channel) in line):
-			return False
-		else:
-			return True
-	
-	#A function to leave the chat room for a particular channel
-	def leaveChannel(self, channel):
-		self.sendEncoded("PART #{}".format(channel))
-		self.channelList.remove(channel)
-	
-	#A function to leave ALL chat rooms	
-	def powerDown(self, username):
-		#Leave the all rooms and finish the loop
-		self.printWithTimestamp("COMMAND: Power Down ({})".format(username))
-		
-		#Create a copy of the channel list so we have a list to work from that won't be edited as we remove channels
-		channelList = list(self.channelList)
-		
-		for channel in channelList:
-			self.printWithTimestampAndChannel(channel, "Parting")
-			self.printWithTimestamp("Powering down.")
-			self.leaveChannel(channel)
-			
-		with open('spotify_now_playing.txt', 'w+') as file:
-			file.write("")
-		
-	#A function to send some text to the chat server, using utf-8 encoding
-	def sendEncoded(self, text):
-		textWithNewLine = text + "\r\n"
-		self.socket.send(textWithNewLine.encode("utf-8"))
-	
-	#A function to send a text message to a given channel's chat room
-	def sendTextToChannel(self, channel, text):
-		self.sendEncoded("PRIVMSG #{} :{}".format(channel, text))
-		time.sleep(1.5)
-	
-	#A function to send a text message to the default chat room
-	def sendTextToDefaultChat(self, text):
-		#Format the message for IRC and send it
-		self.sendTextToChannel(self.channel, text)
-		
-	#A function to send a request for all users in a given channel
-	def getUsersInChannel(self, channel):
-		self.sendEncoded("NAMES #{}".format(channel))
-		
-	#A function to change username color
-	def changeUsernameColor(self, channel, color):
-		self.sendTextToChannel(channel, "/color {}".format(color))
-	
-	#A function used to print text to the command window with a timestamp	
-	def printWithTimestamp(self, text):
-		print("[" + time.strftime("%m/%d/%Y %I:%M:%S %p") + "]" + text)
-	
-	#A function used to print text to the command window with a timestamp and the name of the channel the text is from
-	def printWithTimestampAndChannel(self, channel, text):
-		self.printWithTimestamp(("[CHANNEL:{}]".format(channel) if channel else "") + text)
-	
-	#A function to parse the channel name out of a line of text sent from the server	
-	def getChannelFromLine(self, line):
-		if "#" in line:
-			#Split the line at the first instance of a pound sign
-			splitLine = line.split("#", 1)
-			#split the line again, but this time, split it along whitespace and return the first value
-			return splitLine[1].split()[0]
-		else:
-			return False
-	
-	#A function to parse out some basic user info from the Twitch tags in a line sent from the server 	
-	def parseLineTags(self, tags):
-		color = ""
-		username = ""
-		broadcaster = False
-		moderator = False
-		subscriber = False
-		
-		if ";" in tags:
-			splitTags = tags.split(";")
-			
-			for tag in splitTags:
-				if "color=" in tag:
-					color = tag.split("=")[1]
-				elif "display-name=" in tag:
-					username = tag.split("=")[1]
-				elif "@badges=" in tag and "broadcaster/" in tag:
-					broadcaster = True
-				elif tag == "mod=1":
-					moderator = True
-				elif tag == "subscriber=1":
-					subscriber = True
-					
-		return { "username":username, "broadcaster":broadcaster, "moderator":moderator, "subscriber":subscriber, "color":color }
-		
-	def initSpotify(self, refreshingToken=False):
-		if not SPOTIFY_ENABLED:
-			if not refreshingToken:
-				self.printWithTimestamp("Spotify disabled (missing credentials).")
+    def __init__(self) -> None:
+        self.host = HOST
+        self.port = PORT
+        self.password = PASS
+        self.username = NICK
+        self.channel = CHANNEL
+        self.username_color = USERNAME_COLOR
 
-			return
+        self.socket = socket.socket()
 
-		#Init Spotipy listening
-		self.spotipyScope = "user-read-currently-playing playlist-modify-public"
-		
-		self.spotipyToken = util.prompt_for_user_token(SPOTIFY_USERNAME, self.spotipyScope, client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET, redirect_uri=SPOTIFY_REDIRECT_URI)
-		
-		self.oauth = spotipy.oauth2.SpotifyOAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, scope=self.spotipyScope, cache_path=".cache-{}".format(SPOTIFY_USERNAME))
-		
-		self.spotify = spotipy.Spotify(auth=self.spotipyToken)
-		self.currentTrack = self.parseCurrentTrackString(self.spotify.current_user_playing_track())
-		
-		if self.currentTrack is not None:
-			with open('spotify_now_playing.txt', 'w+') as file:
-				file.write("Listening to {}".format(self.parseCurrentTrackStringForOverlay(self.spotify.current_user_playing_track())))
-		
-		if not refreshingToken:
-			self.printWithTimestamp("Spotify functionality enabled.")
-		
-	def updateSpotifyToken(self):
-		if self.oauth is not None:
-			tokenInfo = self.oauth.get_cached_token()
-			
-			if tokenInfo is not None and self.tokenExpiry <= datetime.datetime.now():
-				newTokenInfo = self.oauth.refresh_access_token(tokenInfo["refresh_token"])
-				self.spotipyToken = newTokenInfo["access_token"]
-				self.spotify._auth = self.spotipyToken
-				
-				self.tokenExpiry = (datetime.datetime.now() + datetime.timedelta(hours = 1))
-				self.printWithTimestamp("Refreshed Spotify token.")
-			elif tokenInfo is None:
-				self.printWithTimestamp("Token Info not found.")
-		
-	def parseCurrentTrackString(self, currentTrackString):
-		if currentTrackString is not None and currentTrackString["is_playing"]:
-			return "\"{}\" by {} {}".format(currentTrackString["item"]["name"], currentTrackString["item"]["artists"][0]["name"], currentTrackString["item"]["external_urls"]["spotify"])
-		else:
-			return None
-	
-	def updateCurrentTrack(self):
-		try:
-			tempCurrentTrack = self.parseCurrentTrackString(self.spotify.current_user_playing_track())
-		
-			if self.currentTrack != tempCurrentTrack:
-				self.currentTrack = tempCurrentTrack
-				
-				with open('spotify_now_playing.txt', 'w+') as file:
-					if self.currentTrack is not None:
-						file.write("Listening to {}".format(self.parseCurrentTrackStringForOverlay(self.spotify.current_user_playing_track())))
-					else:
-						file.write("")
-		except:
-			tokenInfo = self.oauth.get_cached_token()
-			
-			if tokenInfo is None:
-				self.initSpotify(True)
-			else:
-				newTokenInfo = self.oauth.refresh_access_token(tokenInfo["refresh_token"])
-				self.spotipyToken = newTokenInfo["access_token"]
-				self.spotify._auth = self.spotipyToken
-				
-			self.printWithTimestamp("Refreshed Spotify token.")
-			
-			tempCurrentTrack = self.parseCurrentTrackString(self.spotify.current_user_playing_track())
-		
-			if self.currentTrack != tempCurrentTrack:
-				self.currentTrack = tempCurrentTrack
-				
-				with open('spotify_now_playing.txt', 'w+') as file:
-					if self.currentTrack is not None:
-						file.write("Listening to {}".format(self.parseCurrentTrackStringForOverlay(self.spotify.current_user_playing_track())))
-					else:
-						file.write("")						
-			
-	def printCurrentTrackToChat(self):
-		if self.currentTrack is None:
-			self.sendTextToChannel(CHANNEL, "Nothing is currently playing.")
-		else:
-			self.sendTextToChannel(CHANNEL, "Currently playing {}".format(self.currentTrack))
-			self.printWithTimestamp(self.currentTrack)
-			
-	def searchForSpotifySong(self, query, username):
-		if self.spotify is None:
-			self.sendTextToChannel(CHANNEL, "Playlist functionality is currently off.")
-		else:
-			results = self.spotify.search(query, type="track", limit=5)
-			
-			if len(results["tracks"]["items"]) == 0:
-				self.sendTextToChannel(CHANNEL, "{} No results found.".format(username))
-			else:
-				for result in results["tracks"]["items"]:
-					self.sendTextToChannel(CHANNEL, "\"{}\" by {}. CODE: {}".format(result["name"], result["artists"][0]["name"], result["id"]))
-			
-	def searchAddSong(self, query, username):
-		if self.spotify is None:
-			self.sendTextToChannel(CHANNEL, "{} Playlist functionality is currently off.".format(username))
-		else:
-			results = self.spotify.search(query, type="track", limit=5)
-			
-			if len(results["tracks"]["items"]) == 1:
-				self.addTrackToPlaylist(results["tracks"]["items"][0]["id"], username)
-			elif len(results["tracks"]["items"]) == 0:
-				self.sendTextToChannel(CHANNEL, "{} No results found.".format(username))
-			else:
-				self.sendTextToChannel(CHANNEL, "{} Too many results returned. Please choose one of the following and use \"!addsong\" command or narrow your search criteria.".format(username))
-				
-				for result in results["tracks"]["items"]:
-					self.sendTextToChannel(CHANNEL, "\"{}\" by {}. CODE: {}".format(result["name"], result["artists"][0]["name"], result["id"]))
-			
-	def addTrackToPlaylist(self, track, username):
-		if self.spotify is None:
-			self.sendTextToChannel(CHANNEL, "{} Playlist functionality is currently off.".format(username))
-		else:
-			try:
-				results = self.spotify.user_playlist_add_tracks(user=SPOTIFY_USERNAME, playlist_id=SPOTIFY_PLAYLIST_ID, tracks=[track])
-			except:
-				results = None
-				
-			if results is not None:
-				self.sendTextToChannel(CHANNEL, "{} Added song to playlist.".format(username))
-			else:
-				self.sendTextToChannel(CHANNEL, "{} Invalid song code.".format(username))
-		
-	###############MEME FUNCTIONS################
-	def unbenchKenchPassive(self, channel, lowercaseText):
-		unbenchKench = False;
-		kenchKeys = sorted(Memes.UNBENCH_KENCH.keys())
-		
-		for key in kenchKeys:
-			if Memes.UNBENCH_KENCH[key].lower() in lowercaseText:
-				unbenchKench = True;
-				
-		if unbenchKench:
-			key = random.randint(0, (len(kenchKeys) - 1))
-			self.sendTextToChannel(channel, Memes.UNBENCH_KENCH[kenchKeys[key]] + " OSFrog")
-			
-	def commandUnbenchKench(self, channel):
-		outputString = ""
-		
-		for key, value in Memes.UNBENCH_KENCH.items():
-			outputString += value + " OSFrog "
-			
-		self.sendTextToChannel(channel, outputString.strip())
-	###############MEME FUNCTIONS################
-	
-	#A function to parse an individual line sent through the socket
-	def parseLine(self, line):
-		#Split the line into 3 parts, using ":" as the delimiter
-		splitLine = line.split(":", 2)
-		
-		channel = self.getChannelFromLine(splitLine[1])
-		userInfo = self.parseLineTags(splitLine[0])
-		
-		#Print the line with a time stamp and channel (if there is one) prepended
-		self.printWithTimestampAndChannel(channel, line)
-		
-		#Declare a variable we'll use to check whether chat is idle or not
-		resetIdleChatTimer = True
-		
-		if len(splitLine) == 2:
-			if splitLine[0] == "PING ":
-				#If the server sent an AFK check, print the response and a timestamp, then send the response
-				self.printWithTimestamp("PONG :tni.twitch.tv")
-				self.sendEncoded("PONG :tni.twitch.tv")
-				resetIdleChatTimer = False
-		elif len(splitLine) == 3:
-			username = userInfo.get("username", "").lower()
-			splitLine = line.split("{}!{}@{}.tmi.twitch.tv PRIVMSG #{} :".format(username, username, username, channel), 1)
-			text = splitLine[1].strip()
-			lowercaseText = text.lower()
+        # Store joined channels here, remove them when leaving, check on each leave to see if we should stop reading
+        self.channel_list = []
 
-			#Define commands for me
-			if username == CHANNEL:
-				resetIdleChatTimer = False
-				
-				if lowercaseText == "@{} shut down".format(self.username):
-					self.powerDown(username)
-				elif lowercaseText == "!playlist on":
-					if self.spotify is None:
-						self.initSpotify()
-				elif lowercaseText == "!playlist off":
-					self.spotify = None
-					self.currentTrack = None
-					self.oauth = None
-			
-			#Define commands for broadcaster			
-			if userInfo.get("broadcaster", False):
-				if lowercaseText == "@{} begone".format(self.username):
-					self.leaveChannel(channel)
-					self.printWithTimestampAndChannel(channel, "COMMAND: Exit Channel \"{}\" ({})".format(channel, userInfo["username"]))
-					
-			#Define commands for any user in any channel
-			if channel and username != "":
-				self.unbenchKenchPassive(channel, lowercaseText)
-				
-				if lowercaseText == "!commands":
-					self.sendTextToChannel(channel, "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown")
-					self.printWithTimestampAndChannel(channel, "COMMAND: COMMAND LIST ({})".format(userInfo["username"]))
-				elif lowercaseText == "!song":
-					self.printCurrentTrackToChat()
-					self.printWithTimestampAndChannel(channel, "COMMAND: CURRENT SONG ({})".format(userInfo["username"]))
-				elif lowercaseText.startswith("!addsong"):
-					if " " in text:
-						trackCode = text.split(" ", 1)[1].strip()
-						self.addTrackToPlaylist(trackCode, userInfo["username"])
-						self.printWithTimestampAndChannel(channel, "COMMAND: ADD SONG ({}, {})".format(userInfo["username"], trackCode))
-					else:
-						self.sendTextToChannel(channel, "{} Usage: !addsong [Spotify code]".format(userInfo["username"]))
-				elif lowercaseText.startswith("!searchsong"):
-					if " " in text:
-						query = text.split(" ", 1)[1].strip()
-						self.searchForSpotifySong(query, userInfo["username"])
-						self.printWithTimestampAndChannel(channel, "COMMAND: SEARCH SONG ({}, {})".format(userInfo["username"], query))
-					else:
-						self.sendTextToChannel(channel, "{} Usage: !searchsong [search criteria]".format(userInfo["username"]))
-				elif lowercaseText.startswith("!searchadd"):
-					if " " in text:
-						query = text.split(" ", 1)[1].strip()
-						self.searchAddSong(query, userInfo["username"])
-						self.printWithTimestampAndChannel(channel, "COMMAND: SEARCH AND ADD ({}, {})".format(userInfo["username"], query))
-					else:
-						self.sendTextToChannel(channel, "{} Usage: !searchadd [search criteria]".format(userInfo["username"]))
-				elif lowercaseText == "!unbench":
-					self.commandUnbenchKench(channel)
-					self.printWithTimestampAndChannel(channel, "COMMAND: UNBENCH THE KENCH ({})".format(userInfo["username"]))
-				elif lowercaseText == "!jebaited":
-					self.sendTextToChannel(channel, Memes.JEBAITED)
-					self.printWithTimestampAndChannel(channel, "COMMAND: JEBAITED ({})".format(userInfo["username"]))
-				elif lowercaseText == "!slownsteady":
-					self.sendTextToChannel(channel, Memes.SLOW_AND_STEADY)
-					self.printWithTimestampAndChannel(channel, "COMMAND: SLOW AND STEADY ({})".format(userInfo["username"]))
-				elif lowercaseText == "!lapras":
-					self.sendTextToChannel(channel, Memes.LAPRAS)
-					self.printWithTimestampAndChannel(channel, "COMMAND: LAPRAS ({})".format(userInfo["username"]))
-				elif lowercaseText == "!sleeptest":
-					self.sendTextToChannel(channel, Memes.SLEEP_TEST)
-					self.printWithTimestampAndChannel(channel, "COMMAND: SLEEP TEST ({})".format(userInfo["username"]))
-				elif lowercaseText == "!babblingbook":
-					self.sendTextToChannel(channel, Memes.BABBLING_BOOK)
-					self.printWithTimestampAndChannel(channel, "COMMAND: BABBLING BOOK ({})".format(userInfo["username"]))
-				elif lowercaseText == "!srstrouble":
-					self.sendTextToChannel(channel, Memes.SERIOUS_TROUBLE)
-					self.printWithTimestampAndChannel(channel, "COMMAND: SERIOUS TROUBLE ({})".format(userInfo["username"]))
-				elif lowercaseText == "!clown":
-					self.sendTextToChannel(channel, Memes.OVERCLOWNFIDENCE)
-					self.printWithTimestampAndChannel(channel, "COMMAND: OVERCLOWNFIDENCE ({})".format(userInfo["username"]))
-				elif channel in self.adventureList:
-					adventure = self.adventureList[channel]
-					
-					if userInfo["username"] in adventure.playerList:
-						player = adventure.playerList[userInfo["username"]]
-						
-						if lowercaseText == "!adventure commands":
-							self.sendTextToChannel(channel, "!adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]")
-							self.printWithTimestampAndChannel(channel, "COMMAND: Adventure Command List ({})".format(userInfo["username"]))
-						elif lowercaseText == "!attack":
-							gameState = adventure.attackPhase(player, adventure.bossList[adventure.levelCounter])
-							
-							while len(gameState) > 0:
-								self.sendTextToChannel(channel, gameState.popleft())
-							
-							self.printWithTimestampAndChannel(channel, "COMMAND: Attack! ({})".format(userInfo["username"]))
-						elif lowercaseText == "!status":
-							self.sendTextToChannel(channel, player.getStatus())
-							self.printWithTimestampAndChannel(channel, "COMMAND: My Status ({})".format(userInfo["username"]))
-						elif lowercaseText == "!inventory":
-							self.sendTextToChannel(channel, player.getInventory())
-							self.printWithTimestampAndChannel(channel, "COMMAND: My Inventory ({})".format(userInfo["username"]))
-						elif lowercaseText == "!equipped":
-							self.sendTextToChannel(channel, player.getEquipment())
-							self.printWithTimestampAndChannel(channel, "COMMAND: My Equipment ({})".format(userInfo["username"]))
-						elif lowercaseText.find("!equip") == 0:
-							if " " in lowercaseText:
-								itemName = lowercaseText.split(" ", 1)[1]
-								gameState = player.equip(itemName)
-								self.sendTextToChannel(channel, gameState)
-								self.printWithTimestampAndChannel(channel, "COMMAND: Equip ({}, {})".format(userInfo["username"], itemName))
-						elif lowercaseText.find("!unequip") == 0:
-							if " " in lowercaseText:
-								itemName = lowercaseText.split(" ", 1)[1]
-								gameState = player.unequip(itemName)
-								self.sendTextToChannel(channel, gameState)
-								self.printWithTimestampAndChannel(channel, "COMMAND: Unequip ({}, {})".format(userInfo["username"], itemName))
-						elif lowercaseText.find("!iteminfo") == 0:
-							if " " in lowercaseText:
-								itemName = lowercaseText.split(" ", 1)[1]
-								gameState = player.itemInfo(itemName)
-								self.sendTextToChannel(channel, gameState)
-								self.printWithTimestampAndChannel(channel, "COMMAND: Item Info ({}, {})".format(userInfo["username"], itemName))
-								
-					elif lowercaseText == "!join":
-							adventure.addPlayer(userInfo["username"])
-							self.sendTextToChannel(channel, "{} has joined the party!".format(userInfo["username"]))
-							self.printWithTimestampAndChannel(channel, "COMMAND: Join Adventure ({})".format(userInfo["username"]))
+        self.adventure_list = {}
 
-		if resetIdleChatTimer:
-			self.idleChatSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = random.randint(4, 15)))
-				
-	
-	#A function containing the main chat loop 
-	def monitorChat(self):
-		readBuffer = "";
+        # Connect to Twitch IRC
+        self.socket.connect((self.host, self.port))
 
-		while len(self.channelList) > 0:
-			is_readable = [self.socket]
-			is_writable = []
-			is_error = []
-			r, w, e = select.select(is_readable, is_writable, is_error, 1.0)
-		
-			if r:
-				readBuffer = readBuffer + self.socket.recv(1024).decode()
-				tempBuffer = readBuffer.split("\n")
-				readBuffer = tempBuffer.pop()
-				
-				for line in tempBuffer:
-					self.parseLine(line)
-			else:
-				if self.spotify is not None:
-					self.updateSpotifyToken()
-					self.updateCurrentTrack()
-					
-				if self.botInfoSleepTimer <= datetime.datetime.now():
-					self.botInfoSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 20))
-					self.sendTextToChannel(CHANNEL, self.botInfoMessage)
-					
-				if self.selfPromotionMessage and self.selfPromotionSleepTimer <= datetime.datetime.now():
-					self.selfPromotionSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
-					self.sendTextToChannel(CHANNEL, self.selfPromotionMessage)
-					
-				if self.idleChatSleepTimer <= datetime.datetime.now():
-					self.idleChatSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = random.randint(4, 15)))
-					self.sendTextToChannel(CHANNEL, self.idleMessages[random.randint(0, len(self.idleMessages) - 1)])
-			
-				for channel in self.adventureList:
-					adventure = self.adventureList[channel]
-					
-					if adventure.location == Adventure.Locations.town:
-						if datetime.datetime.now() >= (adventure.locationTime + datetime.timedelta(minutes = 5)):
-							adventure.goToLocation(Adventure.Locations.dungeon)
-					elif adventure.location == Adventure.Locations.dungeon:
-						boss = adventure.bossList[adventure.levelCounter]
-						
-						if boss.lastAttackTime is None or datetime.datetime.now() >= (boss.lastAttackTime + datetime.timedelta(0, 5)):
-							boss.lastAttackTime = datetime.datetime.now()
-							
-							for username in adventure.playerList:
-								player = adventure.playerList[username]
-								if player.currentHealth > 0:
-									gameState = adventure.attackPhase(boss, player)
-									self.sendTextToChannel(channel, gameState.popleft())
-			
-		self.printWithTimestamp("See ya!")
+        # Tell the server we'd like to see users' membership levels
+        self.send_encoded("CAP REQ :twitch.tv/membership")
+        # Tell the server we'd like to see tags for users' messages
+        self.send_encoded("CAP REQ :twitch.tv/tags")
+
+        # Send password
+        self.send_encoded("PASS {}".format(self.password))
+
+        # Send username
+        self.send_encoded("NICK {}".format(self.username))
+
+        self.join_channel(self.channel)
+
+        # Spotify stuff
+        self.spotify = None
+        self.current_track = None
+        self.oauth = None
+
+        self.init_spotify()
+        self.token_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+
+        self.bot_info_sleep_timer = datetime.datetime.now() + datetime.timedelta(minutes=15)
+        self.bot_info_message = "Type !commands to see what orders you can give me."
+
+        self.self_promotion_sleep_timer = datetime.datetime.now() + datetime.timedelta(minutes=15)
+        self.self_promotion_message = SELF_PROMOTION_MESSAGE
+
+        self.idle_chat_sleep_timer = datetime.datetime.now() + datetime.timedelta(minutes=10)
+        self.idle_messages = [
+            "Anyone in here?",
+            "ResidentSleeper",
+            "Dead chat SeemsGood",
+            "Every day is TransgenderPride Pride Day TransgenderPride in this house",
+            "PogChamp MODS ARE ASLEEP!! POST YOUR DANK MEMES PogChamp",
+        ]
+
+    def join_channel(self, channel: str) -> None:
+        """Join a channel and wait for the initial NAMES list."""
+        self.send_encoded("JOIN #{}".format(channel))
+
+        # Init read buffer. String containing information passed to/from socket
+        read_buffer = ""
+
+        # Init escape variable
+        loading = True
+
+        while loading:
+            # Read information into the socket in 1024 bit (maybe byte) increments
+            read_buffer = read_buffer + self.socket.recv(1024).decode()
+
+            # Split the read_buffer into a stack, using linebreaks as a delimiter
+            temp_buffer = read_buffer.split("\n")
+
+            # Pop line off the top of the stack
+            read_buffer = temp_buffer.pop()
+
+            for line in temp_buffer:
+                log.debug(line)
+
+                # Test to see if initializing is finished
+                loading = self.still_loading(channel, line)
+
+        self.change_username_color(channel, self.username_color)
+        self.channel_list.append(channel)
+
+    def still_loading(self, channel: str, line: str) -> bool:
+        if "#{} :End of /NAMES list".format(channel) in line:
+            return False
+        else:
+            return True
+
+    def leave_channel(self, channel: str) -> None:
+        """Leave a channel and update the channel list."""
+        self.send_encoded("PART #{}".format(channel))
+        self.channel_list.remove(channel)
+
+    def power_down(self, username: str) -> None:
+        """Leave every channel and clear the now-playing file."""
+        # Leave the all rooms and finish the loop
+        self.print_with_timestamp("COMMAND: Power Down ({})".format(username))
+
+        # Create a copy of the channel list so we have a list to work from that won't be edited as we remove channels
+        channel_list = list(self.channel_list)
+
+        for channel in channel_list:
+            self.print_with_timestamp_and_channel(channel, "Parting")
+            self.print_with_timestamp("Powering down.")
+            self.leave_channel(channel)
+
+        with open("spotify_now_playing.txt", "w+") as file:
+            file.write("")
+
+    def send_encoded(self, text: str) -> None:
+        """Send one IRC line to the server."""
+        text_with_new_line = text + "\r\n"
+        self.socket.send(text_with_new_line.encode("utf-8"))
+
+    def send_text_to_channel(self, channel: str, text: str) -> None:
+        """Send a PRIVMSG to a channel."""
+        self.send_encoded("PRIVMSG #{} :{}".format(channel, text))
+        time.sleep(1.5)
+
+    def send_text_to_default_chat(self, text: str) -> None:
+        """Send a message to the bot's configured channel."""
+        # Format the message for IRC and send it
+        self.send_text_to_channel(self.channel, text)
+
+    def get_users_in_channel(self, channel: str) -> None:
+        """Request the channel's user list."""
+        self.send_encoded("NAMES #{}".format(channel))
+
+    def change_username_color(self, channel: str, color: str) -> None:
+        """Set the bot's chat color."""
+        self.send_text_to_channel(channel, "/color {}".format(color))
+
+    # Log a timestamped message.
+    def print_with_timestamp(self, text: str) -> None:
+        log.info(text)
+
+    # Log a timestamped message with the channel name.
+    def print_with_timestamp_and_channel(self, channel: str, text: str) -> None:
+        if channel:
+            log.info("[%s] %s", channel, text)
+        else:
+            log.info(text)
+
+    def get_channel_from_line(self, line: str) -> Optional[str]:
+        """Extract a channel name from an IRC line."""
+        if "#" not in line:
+            return None
+
+        split_line = line.split("#", 1)
+        return split_line[1].split()[0]
+
+    def parse_line_tags(self, tags: str) -> Dict[str, object]:
+        """Parse IRC tags into a user-info dictionary."""
+        color = ""
+        username = ""
+        broadcaster = False
+        moderator = False
+        subscriber = False
+
+        if ";" in tags:
+            split_tags = tags.split(";")
+
+            for tag in split_tags:
+                if "color=" in tag:
+                    color = tag.split("=")[1]
+                elif "display-name=" in tag:
+                    username = tag.split("=")[1]
+                elif "@badges=" in tag and "broadcaster/" in tag:
+                    broadcaster = True
+                elif tag == "mod=1":
+                    moderator = True
+                elif tag == "subscriber=1":
+                    subscriber = True
+
+        return {
+            "username": username,
+            "broadcaster": broadcaster,
+            "moderator": moderator,
+            "subscriber": subscriber,
+            "color": color,
+        }
+
+    def init_spotify(self, refreshing_token: bool = False) -> None:
+        """Initialize the Spotify client and current-track cache."""
+        if not SPOTIFY_ENABLED:
+            if not refreshing_token:
+                self.print_with_timestamp("Spotify disabled (missing credentials).")
+
+            return
+
+        # Init Spotipy listening
+        self.spotipy_scope = "user-read-currently-playing playlist-modify-public"
+
+        self.spotipy_token = util.prompt_for_user_token(
+            SPOTIFY_USERNAME,
+            self.spotipy_scope,
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=SPOTIFY_REDIRECT_URI,
+        )
+
+        self.oauth = spotipy.oauth2.SpotifyOAuth(
+            SPOTIFY_CLIENT_ID,
+            SPOTIFY_CLIENT_SECRET,
+            SPOTIFY_REDIRECT_URI,
+            scope=self.spotipy_scope,
+            cache_path=".cache-{}".format(SPOTIFY_USERNAME),
+        )
+
+        self.spotify = spotipy.Spotify(auth=self.spotipy_token)
+        self.current_track = self.parse_current_track_string(
+            self.spotify.current_user_playing_track()
+        )
+
+        if self.current_track is not None:
+            with open("spotify_now_playing.txt", "w+") as file:
+                file.write(
+                    "Listening to {}".format(
+                        self.parse_current_track_string_for_overlay(
+                            self.spotify.current_user_playing_track()
+                        )
+                    )
+                )
+
+        if not refreshing_token:
+            self.print_with_timestamp("Spotify functionality enabled.")
+
+    def update_spotify_token(self) -> None:
+        """Refresh the cached Spotify token when needed."""
+        if self.oauth is not None:
+            token_info = self.oauth.get_cached_token()
+
+            if token_info is not None and self.token_expiry <= datetime.datetime.now():
+                new_token_info = self.oauth.refresh_access_token(token_info["refresh_token"])
+                self.spotipy_token = new_token_info["access_token"]
+                self.spotify._auth = self.spotipy_token
+
+                self.token_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
+                self.print_with_timestamp("Refreshed Spotify token.")
+            elif token_info is None:
+                self.print_with_timestamp("Token Info not found.")
+
+    def parse_current_track_string(
+        self, current_track_string: Optional[Dict[str, Any]]
+    ) -> Optional[str]:
+        """Format the current track for chat."""
+        if current_track_string is not None and current_track_string["is_playing"]:
+            return '"{}" by {} {}'.format(
+                current_track_string["item"]["name"],
+                current_track_string["item"]["artists"][0]["name"],
+                current_track_string["item"]["external_urls"]["spotify"],
+            )
+        else:
+            return None
+
+    def parse_current_track_string_for_overlay(
+        self, current_track_string: Optional[Dict[str, Any]]
+    ) -> str:
+        """Format the current track for the overlay file."""
+        if current_track_string is not None and current_track_string["is_playing"]:
+            item = current_track_string["item"]
+
+            return "{} - {}".format(item["name"], item["artists"][0]["name"])
+
+        return ""
+
+    def update_current_track(self) -> None:
+        """Poll Spotify and update the now-playing overlay."""
+        try:
+            temp_current_track = self.parse_current_track_string(
+                self.spotify.current_user_playing_track()
+            )
+
+            if self.current_track != temp_current_track:
+                self.current_track = temp_current_track
+
+                with open("spotify_now_playing.txt", "w+") as file:
+                    if self.current_track is not None:
+                        file.write(
+                            "Listening to {}".format(
+                                self.parse_current_track_string_for_overlay(
+                                    self.spotify.current_user_playing_track()
+                                )
+                            )
+                        )
+                    else:
+                        file.write("")
+        except:
+            token_info = self.oauth.get_cached_token()
+
+            if token_info is None:
+                self.init_spotify(True)
+            else:
+                new_token_info = self.oauth.refresh_access_token(token_info["refresh_token"])
+                self.spotipy_token = new_token_info["access_token"]
+                self.spotify._auth = self.spotipy_token
+
+            self.print_with_timestamp("Refreshed Spotify token.")
+
+            temp_current_track = self.parse_current_track_string(
+                self.spotify.current_user_playing_track()
+            )
+
+            if self.current_track != temp_current_track:
+                self.current_track = temp_current_track
+
+                with open("spotify_now_playing.txt", "w+") as file:
+                    if self.current_track is not None:
+                        file.write(
+                            "Listening to {}".format(
+                                self.parse_current_track_string_for_overlay(
+                                    self.spotify.current_user_playing_track()
+                                )
+                            )
+                        )
+                    else:
+                        file.write("")
+
+    def print_current_track_to_chat(self) -> None:
+        """Announce the current track in chat."""
+        if self.current_track is None:
+            self.send_text_to_channel(CHANNEL, "Nothing is currently playing.")
+        else:
+            self.send_text_to_channel(CHANNEL, "Currently playing {}".format(self.current_track))
+            self.print_with_timestamp(self.current_track)
+
+    def search_for_spotify_song(self, query: str, username: str) -> None:
+        """Search Spotify and list matching tracks."""
+        if self.spotify is None:
+            self.send_text_to_channel(CHANNEL, "Playlist functionality is currently off.")
+        else:
+            results = self.spotify.search(query, type="track", limit=5)
+
+            if len(results["tracks"]["items"]) == 0:
+                self.send_text_to_channel(CHANNEL, "{} No results found.".format(username))
+            else:
+                for result in results["tracks"]["items"]:
+                    self.send_text_to_channel(
+                        CHANNEL,
+                        '"{}" by {}. CODE: {}'.format(
+                            result["name"], result["artists"][0]["name"], result["id"]
+                        ),
+                    )
+
+    def search_add_song(self, query: str, username: str) -> None:
+        """Search Spotify and add a unique match."""
+        if self.spotify is None:
+            self.send_text_to_channel(
+                CHANNEL, "{} Playlist functionality is currently off.".format(username)
+            )
+        else:
+            results = self.spotify.search(query, type="track", limit=5)
+
+            if len(results["tracks"]["items"]) == 1:
+                self.add_track_to_playlist(results["tracks"]["items"][0]["id"], username)
+            elif len(results["tracks"]["items"]) == 0:
+                self.send_text_to_channel(CHANNEL, "{} No results found.".format(username))
+            else:
+                self.send_text_to_channel(
+                    CHANNEL,
+                    '{} Too many results returned. Please choose one of the following and use "!addsong" command or narrow your search criteria.'.format(
+                        username
+                    ),
+                )
+
+                for result in results["tracks"]["items"]:
+                    self.send_text_to_channel(
+                        CHANNEL,
+                        '"{}" by {}. CODE: {}'.format(
+                            result["name"], result["artists"][0]["name"], result["id"]
+                        ),
+                    )
+
+    def add_track_to_playlist(self, track: str, username: str) -> None:
+        """Add a track code to the configured playlist."""
+        if self.spotify is None:
+            self.send_text_to_channel(
+                CHANNEL, "{} Playlist functionality is currently off.".format(username)
+            )
+        else:
+            try:
+                results = self.spotify.user_playlist_add_tracks(
+                    user=SPOTIFY_USERNAME, playlist_id=SPOTIFY_PLAYLIST_ID, tracks=[track]
+                )
+            except:
+                results = None
+
+            if results is not None:
+                self.send_text_to_channel(CHANNEL, "{} Added song to playlist.".format(username))
+            else:
+                self.send_text_to_channel(CHANNEL, "{} Invalid song code.".format(username))
+
+    def unbench_kench_passive(self, channel: str, lowercase_text: str) -> None:
+        """Respond to unbench-the-kench phrases."""
+        unbench_kench = False
+        kench_keys = sorted(Memes.UNBENCH_KENCH.keys())
+
+        for key in kench_keys:
+            if Memes.UNBENCH_KENCH[key].lower() in lowercase_text:
+                unbench_kench = True
+
+        if unbench_kench:
+            key = random.randint(0, (len(kench_keys) - 1))
+            self.send_text_to_channel(channel, Memes.UNBENCH_KENCH[kench_keys[key]] + " OSFrog")
+
+    def command_unbench_kench(self, channel: str) -> None:
+        """Post every unbench-the-kench response."""
+        output_string = ""
+
+        for key, value in Memes.UNBENCH_KENCH.items():
+            output_string += value + " OSFrog "
+
+        self.send_text_to_channel(channel, output_string.strip())
+
+    def parse_line(self, line: str) -> None:
+        """Parse one IRC line and dispatch any command."""
+        # Split the line into 3 parts, using ":" as the delimiter
+        split_line = line.split(":", 2)
+
+        channel = self.get_channel_from_line(split_line[1])
+        user_info = self.parse_line_tags(split_line[0])
+
+        # Print the line with a time stamp and channel (if there is one) prepended
+        if channel:
+            log.debug("[%s] %s", channel, line)
+        else:
+            log.debug(line)
+
+        # Declare a variable we'll use to check whether chat is idle or not
+        reset_idle_chat_timer = True
+
+        if len(split_line) == 2:
+            if split_line[0] == "PING ":
+                # If the server sent an AFK check, print the response and a timestamp, then send the response
+                log.debug("PONG :tni.twitch.tv")
+                self.send_encoded("PONG :tni.twitch.tv")
+                reset_idle_chat_timer = False
+        elif len(split_line) == 3:
+            username = user_info.get("username", "").lower()
+            split_line = line.split(
+                "{}!{}@{}.tmi.twitch.tv PRIVMSG #{} :".format(
+                    username, username, username, channel
+                ),
+                1,
+            )
+            text = split_line[1].strip()
+            lowercase_text = text.lower()
+
+            # Define commands for me
+            if username == CHANNEL:
+                reset_idle_chat_timer = False
+
+                if lowercase_text == "@{} shut down".format(self.username):
+                    self.power_down(username)
+                elif lowercase_text == "!playlist on":
+                    if self.spotify is None:
+                        self.init_spotify()
+                elif lowercase_text == "!playlist off":
+                    self.spotify = None
+                    self.current_track = None
+                    self.oauth = None
+
+            # Define commands for broadcaster
+            if user_info.get("broadcaster", False):
+                if lowercase_text == "@{} begone".format(self.username):
+                    self.leave_channel(channel)
+                    self.print_with_timestamp_and_channel(
+                        channel,
+                        'COMMAND: Exit Channel "{}" ({})'.format(channel, user_info["username"]),
+                    )
+
+            # Define commands for any user in any channel
+            if channel and username != "":
+                self.unbench_kench_passive(channel, lowercase_text)
+
+                if lowercase_text == "!commands":
+                    self.send_text_to_channel(
+                        channel,
+                        "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown",
+                    )
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: COMMAND LIST ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!song":
+                    self.print_current_track_to_chat()
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: CURRENT SONG ({})".format(user_info["username"])
+                    )
+                elif lowercase_text.startswith("!addsong"):
+                    if " " in text:
+                        track_code = text.split(" ", 1)[1].strip()
+                        self.add_track_to_playlist(track_code, user_info["username"])
+                        self.print_with_timestamp_and_channel(
+                            channel,
+                            "COMMAND: ADD SONG ({}, {})".format(user_info["username"], track_code),
+                        )
+                    else:
+                        self.send_text_to_channel(
+                            channel,
+                            "{} Usage: !addsong [Spotify code]".format(user_info["username"]),
+                        )
+                elif lowercase_text.startswith("!searchsong"):
+                    if " " in text:
+                        query = text.split(" ", 1)[1].strip()
+                        self.search_for_spotify_song(query, user_info["username"])
+                        self.print_with_timestamp_and_channel(
+                            channel,
+                            "COMMAND: SEARCH SONG ({}, {})".format(user_info["username"], query),
+                        )
+                    else:
+                        self.send_text_to_channel(
+                            channel,
+                            "{} Usage: !searchsong [search criteria]".format(user_info["username"]),
+                        )
+                elif lowercase_text.startswith("!searchadd"):
+                    if " " in text:
+                        query = text.split(" ", 1)[1].strip()
+                        self.search_add_song(query, user_info["username"])
+                        self.print_with_timestamp_and_channel(
+                            channel,
+                            "COMMAND: SEARCH AND ADD ({}, {})".format(user_info["username"], query),
+                        )
+                    else:
+                        self.send_text_to_channel(
+                            channel,
+                            "{} Usage: !searchadd [search criteria]".format(user_info["username"]),
+                        )
+                elif lowercase_text == "!unbench":
+                    self.command_unbench_kench(channel)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: UNBENCH THE KENCH ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!jebaited":
+                    self.send_text_to_channel(channel, Memes.JEBAITED)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: JEBAITED ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!slownsteady":
+                    self.send_text_to_channel(channel, Memes.SLOW_AND_STEADY)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: SLOW AND STEADY ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!lapras":
+                    self.send_text_to_channel(channel, Memes.LAPRAS)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: LAPRAS ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!sleeptest":
+                    self.send_text_to_channel(channel, Memes.SLEEP_TEST)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: SLEEP TEST ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!babblingbook":
+                    self.send_text_to_channel(channel, Memes.BABBLING_BOOK)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: BABBLING BOOK ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!srstrouble":
+                    self.send_text_to_channel(channel, Memes.SERIOUS_TROUBLE)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: SERIOUS TROUBLE ({})".format(user_info["username"])
+                    )
+                elif lowercase_text == "!clown":
+                    self.send_text_to_channel(channel, Memes.OVERCLOWNFIDENCE)
+                    self.print_with_timestamp_and_channel(
+                        channel, "COMMAND: OVERCLOWNFIDENCE ({})".format(user_info["username"])
+                    )
+                elif channel in self.adventure_list:
+                    adventure = self.adventure_list[channel]
+
+                    if user_info["username"] in adventure.player_list:
+                        player = adventure.player_list[user_info["username"]]
+
+                        if lowercase_text == "!adventure commands":
+                            self.send_text_to_channel(
+                                channel,
+                                "!adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]",
+                            )
+                            self.print_with_timestamp_and_channel(
+                                channel,
+                                "COMMAND: Adventure Command List ({})".format(
+                                    user_info["username"]
+                                ),
+                            )
+                        elif lowercase_text == "!attack":
+                            game_state = adventure.attack_phase(
+                                player, adventure.boss_list[adventure.level_counter]
+                            )
+
+                            while len(game_state) > 0:
+                                self.send_text_to_channel(channel, game_state.popleft())
+
+                            self.print_with_timestamp_and_channel(
+                                channel, "COMMAND: Attack! ({})".format(user_info["username"])
+                            )
+                        elif lowercase_text == "!status":
+                            self.send_text_to_channel(channel, player.get_status())
+                            self.print_with_timestamp_and_channel(
+                                channel, "COMMAND: My Status ({})".format(user_info["username"])
+                            )
+                        elif lowercase_text == "!inventory":
+                            self.send_text_to_channel(channel, player.get_inventory())
+                            self.print_with_timestamp_and_channel(
+                                channel, "COMMAND: My Inventory ({})".format(user_info["username"])
+                            )
+                        elif lowercase_text == "!equipped":
+                            self.send_text_to_channel(channel, player.get_equipment())
+                            self.print_with_timestamp_and_channel(
+                                channel, "COMMAND: My Equipment ({})".format(user_info["username"])
+                            )
+                        elif lowercase_text.find("!equip") == 0:
+                            if " " in lowercase_text:
+                                item_name = lowercase_text.split(" ", 1)[1]
+                                game_state = player.equip(item_name)
+                                self.send_text_to_channel(channel, game_state)
+                                self.print_with_timestamp_and_channel(
+                                    channel,
+                                    "COMMAND: Equip ({}, {})".format(
+                                        user_info["username"], item_name
+                                    ),
+                                )
+                        elif lowercase_text.find("!unequip") == 0:
+                            if " " in lowercase_text:
+                                item_name = lowercase_text.split(" ", 1)[1]
+                                game_state = player.unequip(item_name)
+                                self.send_text_to_channel(channel, game_state)
+                                self.print_with_timestamp_and_channel(
+                                    channel,
+                                    "COMMAND: Unequip ({}, {})".format(
+                                        user_info["username"], item_name
+                                    ),
+                                )
+                        elif lowercase_text.find("!iteminfo") == 0:
+                            if " " in lowercase_text:
+                                item_name = lowercase_text.split(" ", 1)[1]
+                                game_state = player.item_info(item_name)
+                                self.send_text_to_channel(channel, game_state)
+                                self.print_with_timestamp_and_channel(
+                                    channel,
+                                    "COMMAND: Item Info ({}, {})".format(
+                                        user_info["username"], item_name
+                                    ),
+                                )
+
+                    elif lowercase_text == "!join":
+                        adventure.add_player(user_info["username"])
+                        self.send_text_to_channel(
+                            channel, "{} has joined the party!".format(user_info["username"])
+                        )
+                        self.print_with_timestamp_and_channel(
+                            channel, "COMMAND: Join Adventure ({})".format(user_info["username"])
+                        )
+
+        if reset_idle_chat_timer:
+            self.idle_chat_sleep_timer = datetime.datetime.now() + datetime.timedelta(
+                minutes=random.randint(4, 15)
+            )
+
+    def monitor_chat(self) -> None:
+        """Run the main read loop until every channel is left."""
+        read_buffer = ""
+
+        while len(self.channel_list) > 0:
+            is_readable = [self.socket]
+            is_writable = []
+            is_error = []
+            r, w, e = select.select(is_readable, is_writable, is_error, 1.0)
+
+            if r:
+                read_buffer = read_buffer + self.socket.recv(1024).decode()
+                temp_buffer = read_buffer.split("\n")
+                read_buffer = temp_buffer.pop()
+
+                for line in temp_buffer:
+                    self.parse_line(line)
+            else:
+                if self.spotify is not None:
+                    self.update_spotify_token()
+                    self.update_current_track()
+
+                if self.bot_info_sleep_timer <= datetime.datetime.now():
+                    self.bot_info_sleep_timer = datetime.datetime.now() + datetime.timedelta(
+                        minutes=20
+                    )
+                    self.send_text_to_channel(CHANNEL, self.bot_info_message)
+
+                if (
+                    self.self_promotion_message
+                    and self.self_promotion_sleep_timer <= datetime.datetime.now()
+                ):
+                    self.self_promotion_sleep_timer = datetime.datetime.now() + datetime.timedelta(
+                        minutes=15
+                    )
+                    self.send_text_to_channel(CHANNEL, self.self_promotion_message)
+
+                if self.idle_chat_sleep_timer <= datetime.datetime.now():
+                    self.idle_chat_sleep_timer = datetime.datetime.now() + datetime.timedelta(
+                        minutes=random.randint(4, 15)
+                    )
+                    self.send_text_to_channel(
+                        CHANNEL, self.idle_messages[random.randint(0, len(self.idle_messages) - 1)]
+                    )
+
+                for channel in self.adventure_list:
+                    adventure = self.adventure_list[channel]
+
+                    if adventure.location == Adventure.Locations.town:
+                        if datetime.datetime.now() >= (
+                            adventure.location_time + datetime.timedelta(minutes=5)
+                        ):
+                            adventure.go_to_location(Adventure.Locations.dungeon)
+                    elif adventure.location == Adventure.Locations.dungeon:
+                        boss = adventure.boss_list[adventure.level_counter]
+
+                        if boss.last_attack_time is None or datetime.datetime.now() >= (
+                            boss.last_attack_time + datetime.timedelta(0, 5)
+                        ):
+                            boss.last_attack_time = datetime.datetime.now()
+
+                            for username in adventure.player_list:
+                                player = adventure.player_list[username]
+                                if player.current_health > 0:
+                                    game_state = adventure.attack_phase(boss, player)
+                                    self.send_text_to_channel(channel, game_state.popleft())
+
+        self.print_with_timestamp("See ya!")

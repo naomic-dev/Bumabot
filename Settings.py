@@ -1,4 +1,4 @@
-# Global configuration, loaded from environment variables or a .env file.
+"""Environment-backed configuration for the bot."""
 
 import os
 
@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def required(name):
+def required(name: str) -> str:
+    """Return a required environment variable or raise a clear error."""
     value = os.getenv(name)
 
     if not value:
@@ -42,9 +43,11 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "")
 SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI", "http://localhost/")
 SPOTIFY_PLAYLIST_ID = os.getenv("SPOTIFY_PLAYLIST_ID", "")
 
-SPOTIFY_ENABLED = all([
-    SPOTIFY_USERNAME,
-    SPOTIFY_CLIENT_ID,
-    SPOTIFY_CLIENT_SECRET,
-    SPOTIFY_PLAYLIST_ID,
-])
+SPOTIFY_ENABLED = all(
+    [
+        SPOTIFY_USERNAME,
+        SPOTIFY_CLIENT_ID,
+        SPOTIFY_CLIENT_SECRET,
+        SPOTIFY_PLAYLIST_ID,
+    ]
+)

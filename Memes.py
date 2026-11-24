@@ -1,16 +1,16 @@
-#Define global constant meme variables
+"""Canned chat responses used by the command router."""
 
 UNBENCH_KENCH = {
-	"unroll": "UNROLL THE TADPOLE",
-	"unclog": "UNCLOG THE FROG",
-	"unload": "UNLOAD THE TOAD",
-	"uninhibit": "UNINHIBIT THE RIBBIT",
-	"unstick": "UNSTICK THE LICK",
-	"unimprison": "UNIMPRISON THE AMPHIBIAN",
-	"unmute": "UNMUTE THE NEWT",
-	"unbench": "UNBENCH THE KENCH",
-	"permit": "PERMIT THE KERMIT",
-	"defog": "DEFOG THE POLLIWOG"
+    "unroll": "UNROLL THE TADPOLE",
+    "unclog": "UNCLOG THE FROG",
+    "unload": "UNLOAD THE TOAD",
+    "uninhibit": "UNINHIBIT THE RIBBIT",
+    "unstick": "UNSTICK THE LICK",
+    "unimprison": "UNIMPRISON THE AMPHIBIAN",
+    "unmute": "UNMUTE THE NEWT",
+    "unbench": "UNBENCH THE KENCH",
+    "permit": "PERMIT THE KERMIT",
+    "defog": "DEFOG THE POLLIWOG",
 }
 
 JEBAITED = "Jebaited KAPPA OUTDATED Jebaited POGCHAMP OVERRATED Jebaited LONG HAVE WE WAITED Jebaited NOW WE JEBAITED Jebaited"
@@ -21,8 +21,10 @@ LAPRAS = "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25
 
 SLEEP_TEST = "SLEEP TEST 🛏 IF YOU TOUCH THE BED , GO TO SLEEP ⎝  ResidentSleeper"
 
-BABBLING_BOOK = "Babbling book is quickly becoming one of my favorite cards. It's just so positive and generous. Practically costs nothing at all at one mana you drop him on the board and that chill ass mofo gives you a spell to use later in the game. And you also get this adorable little 1/1 can ping things but usually is too harmless to be removed. But more than the BB is just so positive. It comes on the board like \"do you want to cast a spell?\" and I'm like \"yeah BB i do want to cast a spell let's do this shit\" and when he attacks he's like \"SPELLS ARE FUN\" and I'm like \"yeah they are SO FUN.\" He doesn't say some bullshit macho shit like \"I will destroy you\" he's just like \"nah spells are fun.\" And it looks so happy. I mean this is an inanimate object literally brought to life by magic. It understands it's life is a temporary magical gift and the dude is just fucking loving it. I mean look at his face he's just so happy. I am literally never sad when babbling book is on board. IDK if he's gonna make it into the metagame or not but for now he (or she) a pretty chill card"
+BABBLING_BOOK = 'Babbling book is quickly becoming one of my favorite cards. It\'s just so positive and generous. Practically costs nothing at all at one mana you drop him on the board and that chill ass mofo gives you a spell to use later in the game. And you also get this adorable little 1/1 can ping things but usually is too harmless to be removed. But more than the BB is just so positive. It comes on the board like "do you want to cast a spell?" and I\'m like "yeah BB i do want to cast a spell let\'s do this shit" and when he attacks he\'s like "SPELLS ARE FUN" and I\'m like "yeah they are SO FUN." He doesn\'t say some bullshit macho shit like "I will destroy you" he\'s just like "nah spells are fun." And it looks so happy. I mean this is an inanimate object literally brought to life by magic. It understands it\'s life is a temporary magical gift and the dude is just fucking loving it. I mean look at his face he\'s just so happy. I am literally never sad when babbling book is on board. IDK if he\'s gonna make it into the metagame or not but for now he (or she) a pretty chill card'
 
-SERIOUS_TROUBLE = "ᶦ ˢʷᵉᵃʳ ᵗᵒ ᵍᵒᵈ ᶦᶠ ᵃᶰʸ ᵒᶠ ʸᵒᵘ ᵐᵒᵗʰᵉʳʳᶠᵘᶜᵏᵉʳˢ ᶜᵒᵖʸ ᵃᶰᵈ ᵖᵃˢᵗᵉ ᵗʰᶦˢ ʸᵒᵘ ʷᶦᶫᶫ ᵇᵉ ᶦᶰ ˢᵉʳᶦᵒᵘˢ ᵗʳᵒᵘᵇᶫᵉ"
+SERIOUS_TROUBLE = (
+    "ᶦ ˢʷᵉᵃʳ ᵗᵒ ᵍᵒᵈ ᶦᶠ ᵃᶰʸ ᵒᶠ ʸᵒᵘ ᵐᵒᵗʰᵉʳʳᶠᵘᶜᵏᵉʳˢ ᶜᵒᵖʸ ᵃᶰᵈ ᵖᵃˢᵗᵉ ᵗʰᶦˢ ʸᵒᵘ ʷᶦᶫᶫ ᵇᵉ ᶦᶰ ˢᵉʳᶦᵒᵘˢ ᵗʳᵒᵘᵇᶫᵉ"
+)
 
 OVERCLOWNFIDENCE = "( ͠° ͟🔴 ͡°) OVERCLOWNFIDENCE IS A SLOW AND HILARIOUS KILLER ( ͠° ͟🔴 ͡°)"
