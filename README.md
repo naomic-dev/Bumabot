@@ -4,6 +4,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)
 ![Spotipy](https://img.shields.io/badge/spotipy-2.19-1DB954?logo=spotify&logoColor=white)
+![CI](https://github.com/naomic-dev/Bumabot/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 Bumabot was the chat bot for my Twitch channel. Instead of hiding the protocol behind a client library, it speaks Twitch IRC directly: it negotiates capabilities, parses user tags, joins and leaves channels, answers commands, and sends scheduled messages. It also tracks what I was listening to on Spotify and lets viewers search for tracks or add them to a shared playlist.
@@ -49,6 +50,7 @@ tests/
   test_adventure.py            Combat, loot, equipment, revival
   test_chatbot.py              IRC tags and command routing (fake socket)
   test_settings.py             Environment validation
+.github/workflows/ci.yml       Test matrix (Python 3.8, 3.10, 3.12)
 ```
 
 - `ChatBot` owns the socket and the main read loop. `select` keeps the loop responsive while scheduled messages and Spotify polling run between incoming lines.
@@ -110,7 +112,7 @@ pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
-The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules.
+The suite uses only the standard library and a fake IRC socket, so it needs no network access or Twitch credentials. It covers IRC tag parsing, command routing (including the Spotify-disabled paths), and the adventure engine's combat, loot, equipment, and revival rules. CI runs the same suite on Python 3.8, 3.10, and 3.12.
 
 ## Design notes
 
@@ -132,7 +134,7 @@ The suite uses only the standard library and a fake IRC socket, so it needs no n
 - [ ] Start an adventure from chat and finish the dungeon flow.
 - [ ] Move to TLS on port 6697.
 - [ ] Update the Spotify integration to the current Spotipy API.
-- [ ] Add structured logging and a small CI workflow.
+- [ ] Add structured logging.
 
 ## License
 
