@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment
+.env
+
+# Runtime files
+spotify_now_playing.txt
+botlist.txt
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/

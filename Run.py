@@ -1,11 +1,10 @@
-#Define main function
-
-#Imports
 import ChatBot
 
-#Open new socket
-chatBot = ChatBot.ChatBot()
 
-#Use socket to read chat
-chatBot.monitorChat()
+def main():
+    chat_bot = ChatBot.ChatBot()
+    chat_bot.monitorChat()
 
+
+if __name__ == "__main__":
+    main()

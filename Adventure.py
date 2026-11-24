@@ -30,8 +30,8 @@ class Adventure():
 		self.locationTime = datetime.datetime.now()
 		
 		if location == Locations.town:
-			for playerName, player in self.playerList.items():
-				temp = self.revive(player.name)
+			for player in self.playerList.values():
+				self.revive(player.name)
 					
 			for boss in self.bossList:
 				boss.currentHealth = boss.maxHealth
@@ -93,7 +93,7 @@ class Adventure():
 				
 				attacker.kills += 1
 				
-				returnList[0] += " {} has died. ".format(defenderAtSign + defender.name)
+				returnList[0] += " {} has died. ".format(defender.name)
 				
 				if type(defender) is Boss:
 					returnList.append(defender.distributeLoot(self.playerList) + " ")
@@ -217,7 +217,7 @@ class Boss(Character):
 		super().__init__(name, health, attack, speed)
 	
 		#Stats
-		self.description = ""
+		self.description = description
 		
 		#List of players who dealt damage to this character
 		self.creditList = []
@@ -227,7 +227,7 @@ class Boss(Character):
 	#################CONSTRUCTOR#################
 	
 	def addDrop (self, loot):
-		self.drops.add(loot);
+		self.drops.append(loot)
 	
 	def attackRoll(self):
 		return super().attackRoll(0)
@@ -273,16 +273,6 @@ class Player(Character):
 		
 		#Inventory
 		self.inventory = []
-		
-		if name == "HipHocrates":
-			self.currentHealth = 1;
-			# self.weapon = copy.deepcopy(RAT_CROSSBOW)
-			# self.helm = copy.deepcopy(RAT_HELM)
-			# self.armor = copy.deepcopy(RAT_ARMOR)
-			# self.inventory.append(copy.deepcopy(GOLD_COIN))
-			# self.inventory.append(copy.deepcopy(TRAINING_SWORD))
-			# self.inventory.append(copy.deepcopy(TRAINING_HELM))
-			# self.inventory.append(copy.deepcopy(TRAINING_ARMOR))
 	#################CONSTRUCTOR#################
 	
 	def attackRoll(self):
@@ -411,7 +401,7 @@ class Player(Character):
 				dropChance = item.rarity
 		
 		if itemFound:
-			returnText = "{} {}: {} {}% drop chance.".format(self.name, fullName, description, dropChance / 10)
+			returnText = "{} {} ({}): {} {}% drop chance.".format(self.name, fullName, itemType, description, dropChance / 10)
 		else:
 			returnText = "{} You do not possess that item.".format(self.name)
 		

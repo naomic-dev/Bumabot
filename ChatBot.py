@@ -1,19 +1,24 @@
 #Define a class that extends socket
 
 #################Imports#################
+import datetime
+import random
 import select
 import socket
-import datetime
 import time
-import random
-from collections import deque
-from twitchAPI.twitch import Twitch
 
 #For Spotify integration
+import spotipy
+import spotipy.oauth2
 import spotipy.util as util
 
 #Import local files
-from Settings import HOST, PORT, PASS, NICK, CHANNEL, USERNAME_COLOR, SPEECH_MODE, SPOTIFY_USERNAME, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI, SPOTIFY_PLAYLIST_ID
+from Settings import (
+	HOST, PORT, PASS, NICK, CHANNEL, USERNAME_COLOR, SELF_PROMOTION_MESSAGE,
+	SPOTIFY_ENABLED, SPOTIFY_USERNAME, SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET,
+	SPOTIFY_REDIRECT_URI, SPOTIFY_PLAYLIST_ID
+)
+import Adventure
 import Memes
 #################Imports#################
 
@@ -26,8 +31,7 @@ class ChatBot():
 		self.username = NICK
 		self.channel = CHANNEL
 		self.usernameColor = USERNAME_COLOR
-		self.speechMode = SPEECH_MODE
-		
+
 		self.socket = socket.socket()
 		
 		#Store joined channels here, remove them when leaving, check on each leave to see if we should stop reading
@@ -56,13 +60,14 @@ class ChatBot():
 		self.currentTrack = None
 		self.oauth = None
 		
-		self.initspotify()
-		self.tokenexpiry = (datetime.datetime.now() + datetime.timedelta(hours = 1))
-		
+		self.initSpotify()
+		self.tokenExpiry = (datetime.datetime.now() + datetime.timedelta(hours = 1))
+
 		self.botInfoSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
-		self.botInfoMessage = "Type !commands to see what orders you can give me.";
-		
+		self.botInfoMessage = "Type !commands to see what orders you can give me."
+
 		self.selfPromotionSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
+		self.selfPromotionMessage = SELF_PROMOTION_MESSAGE
 		
 		self.idleChatSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 10))
 		self.idleMessages = [
@@ -72,8 +77,6 @@ class ChatBot():
 			"Every day is TransgenderPride Pride Day TransgenderPride in this house",
 			"PogChamp MODS ARE ASLEEP!! POST YOUR DANK MEMES PogChamp"
 		]
-		
-		self.modSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 70))
 	#################CONSTRUCTOR#################		
 		
 	#A function to join the chat room for a particular channel
@@ -201,6 +204,12 @@ class ChatBot():
 		return { "username":username, "broadcaster":broadcaster, "moderator":moderator, "subscriber":subscriber, "color":color }
 		
 	def initSpotify(self, refreshingToken=False):
+		if not SPOTIFY_ENABLED:
+			if not refreshingToken:
+				self.printWithTimestamp("Spotify disabled (missing credentials).")
+
+			return
+
 		#Init Spotipy listening
 		self.spotipyScope = "user-read-currently-playing playlist-modify-public"
 		
@@ -364,12 +373,6 @@ class ChatBot():
 				self.printWithTimestamp("PONG :tni.twitch.tv")
 				self.sendEncoded("PONG :tni.twitch.tv")
 				resetIdleChatTimer = False
-			elif "!" in splitLine[1]:
-				username = splitLine[1].split("!", 1)[0]
-				
-				botList = ""
-				with open('botlist.txt', 'r+') as file:
-					botList = file.read()				
 		elif len(splitLine) == 3:
 			username = userInfo.get("username", "").lower()
 			splitLine = line.split("{}!{}@{}.tmi.twitch.tv PRIVMSG #{} :".format(username, username, username, channel), 1)
@@ -381,7 +384,7 @@ class ChatBot():
 				resetIdleChatTimer = False
 				
 				if lowercaseText == "@{} shut down".format(self.username):
-					self.shutDown()
+					self.powerDown(username)
 				elif lowercaseText == "!playlist on":
 					if self.spotify is None:
 						self.initSpotify()
@@ -401,8 +404,32 @@ class ChatBot():
 				self.unbenchKenchPassive(channel, lowercaseText)
 				
 				if lowercaseText == "!commands":
-					self.sendTextToChannel(channel, "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sockpuppets, !sleeptest, !srstrouble, !clown")
+					self.sendTextToChannel(channel, "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown")
 					self.printWithTimestampAndChannel(channel, "COMMAND: COMMAND LIST ({})".format(userInfo["username"]))
+				elif lowercaseText == "!song":
+					self.printCurrentTrackToChat()
+					self.printWithTimestampAndChannel(channel, "COMMAND: CURRENT SONG ({})".format(userInfo["username"]))
+				elif lowercaseText.startswith("!addsong"):
+					if " " in text:
+						trackCode = text.split(" ", 1)[1].strip()
+						self.addTrackToPlaylist(trackCode, userInfo["username"])
+						self.printWithTimestampAndChannel(channel, "COMMAND: ADD SONG ({}, {})".format(userInfo["username"], trackCode))
+					else:
+						self.sendTextToChannel(channel, "{} Usage: !addsong [Spotify code]".format(userInfo["username"]))
+				elif lowercaseText.startswith("!searchsong"):
+					if " " in text:
+						query = text.split(" ", 1)[1].strip()
+						self.searchForSpotifySong(query, userInfo["username"])
+						self.printWithTimestampAndChannel(channel, "COMMAND: SEARCH SONG ({}, {})".format(userInfo["username"], query))
+					else:
+						self.sendTextToChannel(channel, "{} Usage: !searchsong [search criteria]".format(userInfo["username"]))
+				elif lowercaseText.startswith("!searchadd"):
+					if " " in text:
+						query = text.split(" ", 1)[1].strip()
+						self.searchAddSong(query, userInfo["username"])
+						self.printWithTimestampAndChannel(channel, "COMMAND: SEARCH AND ADD ({}, {})".format(userInfo["username"], query))
+					else:
+						self.sendTextToChannel(channel, "{} Usage: !searchadd [search criteria]".format(userInfo["username"]))
 				elif lowercaseText == "!unbench":
 					self.commandUnbenchKench(channel)
 					self.printWithTimestampAndChannel(channel, "COMMAND: UNBENCH THE KENCH ({})".format(userInfo["username"]))
@@ -415,9 +442,6 @@ class ChatBot():
 				elif lowercaseText == "!lapras":
 					self.sendTextToChannel(channel, Memes.LAPRAS)
 					self.printWithTimestampAndChannel(channel, "COMMAND: LAPRAS ({})".format(userInfo["username"]))
-				elif lowercaseText == "!sockpuppets":
-					self.sendTextToChannel(channel, Memes.SOCK_PUPPETS.format(channel))
-					self.printWithTimestampAndChannel(channel, "COMMAND: SOCK PUPPETS ({})".format(userInfo["username"]))
 				elif lowercaseText == "!sleeptest":
 					self.sendTextToChannel(channel, Memes.SLEEP_TEST)
 					self.printWithTimestampAndChannel(channel, "COMMAND: SLEEP TEST ({})".format(userInfo["username"]))
@@ -478,6 +502,9 @@ class ChatBot():
 							adventure.addPlayer(userInfo["username"])
 							self.sendTextToChannel(channel, "{} has joined the party!".format(userInfo["username"]))
 							self.printWithTimestampAndChannel(channel, "COMMAND: Join Adventure ({})".format(userInfo["username"]))
+
+		if resetIdleChatTimer:
+			self.idleChatSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = random.randint(4, 15)))
 				
 	
 	#A function containing the main chat loop 
@@ -506,7 +533,7 @@ class ChatBot():
 					self.botInfoSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 20))
 					self.sendTextToChannel(CHANNEL, self.botInfoMessage)
 					
-				if self.selfPromotionSleepTimer <= datetime.datetime.now():
+				if self.selfPromotionMessage and self.selfPromotionSleepTimer <= datetime.datetime.now():
 					self.selfPromotionSleepTimer = (datetime.datetime.now() + datetime.timedelta(minutes = 15))
 					self.sendTextToChannel(CHANNEL, self.selfPromotionMessage)
 					
