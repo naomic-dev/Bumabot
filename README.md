@@ -43,6 +43,56 @@ This repository is a cleaned-up reference version. Channel-specific responses an
 
 The bot also watches chat for "unbench the kench" phrases and responds passively.
 
+## Demo
+
+Illustrative transcript; names, tracks, and damage rolls are placeholders.
+
+```text
+<Viewer> !commands
+<Bumabot> !commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown, !join (adventure)
+
+<Viewer> !song
+<Bumabot> Currently playing "One More Time" by Daft Punk https://open.spotify.com/track/...
+
+<Viewer> !searchsong daft punk
+<Bumabot> "Around the World" by Daft Punk. CODE: 2i1f2...
+<Bumabot> "One More Time" by Daft Punk. CODE: 3n3f4...
+
+<Viewer> !addsong 3n3f4...
+<Bumabot> Added song to playlist.
+
+<Viewer> !unbench
+<Bumabot> UNROLL THE TADPOLE OSFrog UNCLOG THE FROG OSFrog ...
+```
+
+```text
+<Streamer> !adventure start
+<Bumabot> The party finds itself in a peaceful mountain town. After a brief rest to rally their strength, the party will depart.
+<Bumabot> Adventure started! Type !join to join the party. The channel owner can use !adventure go to enter the dungeon now.
+
+<Viewer> !join
+<Bumabot> Viewer has joined the party!
+
+<Streamer> !adventure go
+<Bumabot> The party has entered a dungeon. A Rat has appeared.
+
+<Viewer> !attack
+<Bumabot> Viewer attacked Rat for 3 damage. Rat has died.
+<Bumabot> Viewer got a Clump of Rat Fur!
+<Bumabot> A Large Rat has appeared.
+
+<Bumabot> Large Rat attacked Viewer for 1 damage.
+
+<Viewer> !status
+<Bumabot> Viewer Status: OK, HP: 9/10, ATK: 1, SPD: 1, Kills: 1, Deaths: 0
+
+<Viewer> !inventory
+<Bumabot> Viewer Inventory (1): #1 Clump of Rat Fur
+
+<Streamer> !adventure stop
+<Bumabot> Adventure stopped.
+```
+
 ## Architecture
 
 ```
@@ -151,6 +201,7 @@ ruff check .
 ## Roadmap
 
 - [ ] Expand the adventure with more bosses, items, and balance tuning.
+- [ ] Add screenshots and a short demo recording.
 
 ## License
 
