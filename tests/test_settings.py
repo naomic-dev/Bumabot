@@ -79,6 +79,25 @@ class SettingsTests(unittest.TestCase):
             ["irc.chat.twitch.tv", "6697", "True"],
         )
 
+    def test_invalid_port_fails_with_a_clear_message(self):
+        env = dict(BASE_ENV)
+        env["TWITCH_IRC_PORT"] = "not-a-port"
+
+        result = run_settings("import Settings", env)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("TWITCH_IRC_PORT", result.stderr)
+        self.assertIn("integer", result.stderr)
+
+    def test_out_of_range_port_fails_with_a_clear_message(self):
+        env = dict(BASE_ENV)
+        env["TWITCH_IRC_PORT"] = "70000"
+
+        result = run_settings("import Settings", env)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("between 1 and 65535", result.stderr)
+
     def test_tls_can_be_disabled(self):
         env = dict(BASE_ENV)
         env["TWITCH_IRC_TLS"] = "false"

@@ -592,7 +592,7 @@ class ChatBot:
                 if lowercase_text == "!commands":
                     self.send_text_to_channel(
                         channel,
-                        "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown, !join (adventure)",
+                        "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !lapras, !sleeptest, !babblingbook, !srstrouble, !clown, !join (adventure)",
                     )
                     self.print_with_timestamp_and_channel(
                         channel, "COMMAND: COMMAND LIST ({})".format(user_info["username"])
@@ -690,7 +690,7 @@ class ChatBot:
                         if lowercase_text == "!adventure commands":
                             self.send_text_to_channel(
                                 channel,
-                                "!join, !adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]",
+                                "!adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]",
                             )
                             self.print_with_timestamp_and_channel(
                                 channel,

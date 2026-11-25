@@ -168,11 +168,11 @@ class ChatBotCommandTests(unittest.TestCase):
         self.assertNotIn("testchannel", self.bot.channel_list)
 
     def test_parse_line_tags(self):
-        tags = "@badges=broadcaster/1;color=#FF0000;display-name=Naomi;" "mod=1;subscriber=1"
+        tags = "@badges=broadcaster/1;color=#FF0000;display-name=Streamer;" "mod=1;subscriber=1"
 
         info = self.bot.parse_line_tags(tags)
 
-        self.assertEqual(info["username"], "Naomi")
+        self.assertEqual(info["username"], "Streamer")
         self.assertEqual(info["color"], "#FF0000")
         self.assertTrue(info["broadcaster"])
         self.assertTrue(info["moderator"])

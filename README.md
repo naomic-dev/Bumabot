@@ -49,7 +49,7 @@ Illustrative transcript; names, tracks, and damage rolls are placeholders.
 
 ```text
 <Viewer> !commands
-<Bumabot> !commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown, !join (adventure)
+<Bumabot> !commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !lapras, !sleeptest, !babblingbook, !srstrouble, !clown, !join (adventure)
 
 <Viewer> !song
 <Bumabot> Currently playing "One More Time" by Daft Punk https://open.spotify.com/track/...

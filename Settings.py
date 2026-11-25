@@ -20,8 +20,27 @@ def required(name: str) -> str:
     return value
 
 
+def port_number(name: str, default: int) -> int:
+    """Return a validated TCP port from the environment."""
+    raw = os.getenv(name, str(default))
+
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(
+            "{} must be an integer, got {!r}. Copy .env.example to .env and try again.".format(
+                name, raw
+            )
+        )
+
+    if not 1 <= value <= 65535:
+        raise RuntimeError("{} must be between 1 and 65535, got {}.".format(name, value))
+
+    return value
+
+
 HOST = os.getenv("TWITCH_IRC_HOST", "irc.chat.twitch.tv")
-PORT = int(os.getenv("TWITCH_IRC_PORT", "6697"))
+PORT = port_number("TWITCH_IRC_PORT", 6697)
 USERNAME_COLOR = os.getenv("TWITCH_USERNAME_COLOR", "blue")
 USE_TLS = os.getenv("TWITCH_IRC_TLS", "true").lower() in ("1", "true", "yes", "on")
 
