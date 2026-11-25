@@ -1,6 +1,6 @@
 # Bumabot
 
-> A Twitch chat bot built directly on the IRC protocol, with timed messages, Spotify now-playing integration, and an experimental dungeon-crawler module.
+> A Twitch chat bot built directly on the IRC protocol, with timed messages, Spotify now-playing integration, and a small dungeon-crawler game.
 
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)
 ![Spotipy](https://img.shields.io/badge/spotipy-2.23-1DB954?logo=spotify&logoColor=white)
@@ -9,7 +9,7 @@
 
 Bumabot was the chat bot for my Twitch channel. Instead of hiding the protocol behind a client library, it speaks Twitch IRC directly: it negotiates capabilities, parses user tags, joins and leaves channels, answers commands, and sends scheduled messages. It also tracks what I was listening to on Spotify and lets viewers search for tracks or add them to a shared playlist.
 
-This repository is a cleaned-up reference version. Channel-specific responses and personal references have been removed, and the adventure module is intentionally marked experimental. The bot runs from a local `.env` file; no credentials are committed.
+This repository is a cleaned-up reference version. Channel-specific responses and personal references have been removed. The adventure module is a minimal but playable loop. The bot runs from a local `.env` file; no credentials are committed.
 
 ## Features
 
@@ -19,7 +19,7 @@ This repository is a cleaned-up reference version. Channel-specific responses an
 - **Spotify integration** — current-track announcements, track search, and playlist additions, with token refresh and a `spotify_now_playing.txt` overlay file.
 - **Data-driven responses** — meme and shoutout text lives in `Memes.py`, not inside the command router.
 - **Structured logging** — level-controlled logs with timestamps and module names; set `LOG_LEVEL` to `DEBUG` to see raw IRC traffic.
-- **Experimental adventure module** — a turn-based dungeon crawler with parties, bosses, loot, equipment, and death/revival rules.
+- **Adventure module** — a playable turn-based dungeon crawler with parties, bosses, loot, equipment, and death/revival rules.
 
 ## Commands
 
@@ -32,7 +32,11 @@ This repository is a cleaned-up reference version. Channel-specific responses an
 | `!searchadd <query>` | Everyone | Search Spotify and add a single match. |
 | `!unbench` | Everyone | Post the full "unbench the kench" collection. |
 | `!jebaited`, `!slownsteady`, `!lapras`, `!sleeptest`, `!babblingbook`, `!srstrouble`, `!clown` | Everyone | Post a themed chat response. |
-| `!adventure commands`, `!attack`, `!status`, `!inventory`, `!equipped`, `!equip <item>`, `!unequip <item>`, `!iteminfo <item>` | Adventure players | Interact with the experimental adventure module. |
+| `!join` | Everyone | Join the active adventure. |
+| `!adventure commands`, `!attack`, `!status`, `!inventory`, `!equipped`, `!equip <item>`, `!unequip <item>`, `!iteminfo <item>` | Adventure players | Interact with the adventure. |
+| `!adventure start` | Channel owner | Start a town-phase adventure with a 5-minute join window. |
+| `!adventure go` | Channel owner | Send the party into the dungeon immediately. |
+| `!adventure stop` | Channel owner | End the channel's adventure. |
 | `@<bot> shut down` | Channel owner | Leave every channel and stop the bot. |
 | `!playlist on` / `!playlist off` | Channel owner | Enable or disable Spotify features. |
 | `@<bot> begone` | Broadcaster | Leave the current channel. |
@@ -44,7 +48,7 @@ The bot also watches chat for "unbench the kench" phrases and responds passively
 ```
 Run.py          Entry point
 ChatBot.py      IRC socket (TLS), command routing, timed messages, Spotify
-Adventure.py    Experimental dungeon-crawler engine
+Adventure.py    Minimal dungeon-crawler engine
 Memes.py        Chat response constants
 Settings.py     Environment-based configuration
 logging_config.py  Level-controlled logging setup
@@ -60,7 +64,7 @@ tests/
 - `ChatBot` owns the socket and the main read loop. `select` keeps the loop responsive while scheduled messages and Spotify polling run between incoming lines.
 - Command parsing splits Twitch IRC lines into tags, prefix, and message body. Tags provide the display name, badge list, moderator status, and subscriber status.
 - Spotify access uses a cached OAuth token, refreshed hourly; the currently playing track is mirrored into `spotify_now_playing.txt` for an OBS overlay.
-- `Adventure` is a separate state machine with characters, items, locations, and scheduled boss attacks. It is not currently started by a chat command; see the roadmap.
+- `Adventure` is a separate state machine with characters, items, locations, and scheduled boss attacks. The channel owner starts it with `!adventure start`; the loop advances the town phase and boss attacks.
 
 ## Requirements
 
@@ -141,12 +145,12 @@ ruff check .
 
 ## Known limitations
 
-- **The adventure module is incomplete.** No command currently creates an adventure, so its chat commands are unreachable; the engine has unit tests, but the full flow is not playable from chat.
+- **The adventure loop is minimal.** It has a town phase, boss fights, loot, and revival, but limited content and balance.
 - **Live integration is untested.** The test suite uses a fake IRC socket and mocked Spotify clients; it does not connect to Twitch or Spotify.
 
 ## Roadmap
 
-- [ ] Start an adventure from chat and finish the dungeon flow.
+- [ ] Expand the adventure with more bosses, items, and balance tuning.
 
 ## License
 

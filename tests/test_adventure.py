@@ -62,6 +62,19 @@ class AdventureTests(unittest.TestCase):
 
         self.assertEqual(self.player.current_health, self.player.max_health)
 
+    def test_fifth_boss_resets_the_tier(self):
+        self.game.level_counter = 4
+        boss = self.game.boss_list[4]
+        boss.current_health = 1
+        self.player.attack_roll = lambda: 100
+        boss.attack_roll = lambda: 1
+        self.game.go_to_location(Adventure.Locations.dungeon)
+
+        self.game.attack_phase(self.player, boss)
+
+        self.assertEqual(self.game.level_counter, 0)
+        self.assertEqual(self.game.location, Adventure.Locations.town)
+
     def test_equip_and_unequip_update_equipment(self):
         self.player.inventory.append(copy.deepcopy(Adventure.TRAINING_SWORD))
 

@@ -1,7 +1,6 @@
 """Experimental party-based dungeon crawler used by the chat bot.
 
-The bot does not currently start an adventure from chat; this module is kept
-as an experimental side project.
+The bot starts a minimal adventure from chat with `!adventure start`.
 """
 
 from __future__ import annotations
@@ -123,11 +122,14 @@ class Adventure:
 
                 if type(defender) is Boss:
                     return_list.append(defender.distribute_loot(self.player_list) + " ")
-                    return_list.append(
-                        self.go_to_location(Locations.town)
-                        if ((self.level_counter + 1) % 5) == 0
-                        else self.go_to_next_level()
-                    )
+
+                    if ((self.level_counter + 1) % 5) == 0:
+                        self.level_counter = 0
+                        self.boss_list = []
+                        self.init_bosses()
+                        return_list.append(self.go_to_location(Locations.town))
+                    else:
+                        return_list.append(self.go_to_next_level())
                 elif type(defender) is Player:
                     defender.deaths += 1
 

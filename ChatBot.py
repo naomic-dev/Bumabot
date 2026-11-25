@@ -444,6 +444,83 @@ class ChatBot:
 
         self.send_text_to_channel(channel, output_string.strip())
 
+    def start_adventure(self, channel: str) -> None:
+        """Start a new adventure in the channel."""
+        if channel in self.adventure_list:
+            self.send_text_to_channel(channel, "An adventure is already running in this channel.")
+            return
+
+        adventure = Adventure.Adventure()
+        self.adventure_list[channel] = adventure
+
+        narration = adventure.go_to_location(Adventure.Locations.town)
+
+        if narration:
+            self.send_text_to_channel(channel, narration)
+
+        self.send_text_to_channel(
+            channel,
+            "Adventure started! Type !join to join the party. "
+            "The channel owner can use !adventure go to enter the dungeon now.",
+        )
+
+    def enter_dungeon(self, channel: str) -> None:
+        """Send an active adventure into the dungeon."""
+        adventure = self.adventure_list.get(channel)
+
+        if adventure is None:
+            self.send_text_to_channel(channel, "No adventure is running in this channel.")
+            return
+
+        if adventure.location == Adventure.Locations.dungeon:
+            self.send_text_to_channel(channel, "The party is already in the dungeon.")
+            return
+
+        narration = adventure.go_to_location(Adventure.Locations.dungeon)
+
+        if narration:
+            self.send_text_to_channel(channel, narration)
+
+    def stop_adventure(self, channel: str) -> None:
+        """Stop and remove the channel's adventure."""
+        if channel not in self.adventure_list:
+            self.send_text_to_channel(channel, "No adventure is running in this channel.")
+            return
+
+        del self.adventure_list[channel]
+        self.send_text_to_channel(channel, "Adventure stopped.")
+
+    def update_adventures(self) -> None:
+        """Advance town countdowns and boss attacks for active adventures."""
+        for channel, adventure in list(self.adventure_list.items()):
+            if adventure.location == Adventure.Locations.town:
+                if datetime.datetime.now() >= (
+                    adventure.location_time + datetime.timedelta(minutes=5)
+                ):
+                    narration = adventure.go_to_location(Adventure.Locations.dungeon)
+
+                    if narration:
+                        self.send_text_to_channel(channel, narration)
+            elif adventure.location == Adventure.Locations.dungeon:
+                boss = adventure.boss_list[adventure.level_counter]
+
+                if boss.last_attack_time is None or datetime.datetime.now() >= (
+                    boss.last_attack_time + datetime.timedelta(seconds=5)
+                ):
+                    boss.last_attack_time = datetime.datetime.now()
+
+                    for player in adventure.player_list.values():
+                        if player.current_health <= 0:
+                            continue
+
+                        game_state = adventure.attack_phase(boss, player)
+
+                        while game_state:
+                            self.send_text_to_channel(channel, game_state.popleft())
+
+                        if boss.current_health <= 0:
+                            break
+
     def parse_line(self, line: str) -> None:
         """Parse one IRC line and dispatch any command."""
         # Split the line into 3 parts, using ":" as the delimiter
@@ -492,6 +569,12 @@ class ChatBot:
                     self.current_track = None
                     self.oauth = None
                     self.spotipy_token = None
+                elif lowercase_text == "!adventure start":
+                    self.start_adventure(channel)
+                elif lowercase_text == "!adventure go":
+                    self.enter_dungeon(channel)
+                elif lowercase_text == "!adventure stop":
+                    self.stop_adventure(channel)
 
             # Define commands for broadcaster
             if user_info.get("broadcaster", False):
@@ -509,7 +592,7 @@ class ChatBot:
                 if lowercase_text == "!commands":
                     self.send_text_to_channel(
                         channel,
-                        "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown",
+                        "!commands, !song, !addsong [Spotify Code], !searchsong [Search Criteria], !searchadd [Search Criteria], !unbench, !jebaited, !slownsteady, !sleeptest, !srstrouble, !clown, !join (adventure)",
                     )
                     self.print_with_timestamp_and_channel(
                         channel, "COMMAND: COMMAND LIST ({})".format(user_info["username"])
@@ -607,7 +690,7 @@ class ChatBot:
                         if lowercase_text == "!adventure commands":
                             self.send_text_to_channel(
                                 channel,
-                                "!adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]",
+                                "!join, !adventure commands, !attack, !status, !inventory, !equipped, !equip [item name], !unequip [item name], !iteminfo [item name]",
                             )
                             self.print_with_timestamp_and_channel(
                                 channel,
@@ -620,8 +703,16 @@ class ChatBot:
                                 player, adventure.boss_list[adventure.level_counter]
                             )
 
-                            while len(game_state) > 0:
-                                self.send_text_to_channel(channel, game_state.popleft())
+                            if not game_state:
+                                self.send_text_to_channel(
+                                    channel,
+                                    "{} You can attack again in a few seconds.".format(
+                                        user_info["username"]
+                                    ),
+                                )
+                            else:
+                                while game_state:
+                                    self.send_text_to_channel(channel, game_state.popleft())
 
                             self.print_with_timestamp_and_channel(
                                 channel, "COMMAND: Attack! ({})".format(user_info["username"])
@@ -734,26 +825,6 @@ class ChatBot:
                         CHANNEL, self.idle_messages[random.randint(0, len(self.idle_messages) - 1)]
                     )
 
-                for channel in self.adventure_list:
-                    adventure = self.adventure_list[channel]
-
-                    if adventure.location == Adventure.Locations.town:
-                        if datetime.datetime.now() >= (
-                            adventure.location_time + datetime.timedelta(minutes=5)
-                        ):
-                            adventure.go_to_location(Adventure.Locations.dungeon)
-                    elif adventure.location == Adventure.Locations.dungeon:
-                        boss = adventure.boss_list[adventure.level_counter]
-
-                        if boss.last_attack_time is None or datetime.datetime.now() >= (
-                            boss.last_attack_time + datetime.timedelta(0, 5)
-                        ):
-                            boss.last_attack_time = datetime.datetime.now()
-
-                            for username in adventure.player_list:
-                                player = adventure.player_list[username]
-                                if player.current_health > 0:
-                                    game_state = adventure.attack_phase(boss, player)
-                                    self.send_text_to_channel(channel, game_state.popleft())
+            self.update_adventures()
 
         self.print_with_timestamp("See ya!")

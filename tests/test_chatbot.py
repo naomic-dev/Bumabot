@@ -1,9 +1,12 @@
 import contextlib
+import datetime
 import io
 import os
 import tempfile
 import unittest
 from unittest import mock
+
+import Adventure
 
 # Settings is evaluated at import time, so provide a complete test environment
 # before importing the bot.
@@ -347,6 +350,88 @@ class ChatBotCommandTests(unittest.TestCase):
         self.assertIsInstance(context.raw_socket, FakeSocket)
         self.assertEqual(context.server_hostname, "irc.chat.twitch.tv")
         self.assertIs(result, context.wrapped_socket)
+
+    def test_start_adventure_creates_a_town_adventure(self):
+        self.bot.start_adventure("testchannel")
+
+        adventure = self.bot.adventure_list["testchannel"]
+
+        self.assertEqual(adventure.location, Adventure.Locations.town)
+        self.assertTrue(any("Adventure started!" in text for _, text in self.messages))
+        self.assertTrue(any("peaceful mountain town" in text for _, text in self.messages))
+
+    def test_start_adventure_twice_warns(self):
+        self.bot.start_adventure("testchannel")
+        self.messages.clear()
+
+        self.bot.start_adventure("testchannel")
+
+        self.assertIn("already running", self.last_message())
+
+    def test_enter_dungeon_changes_location(self):
+        self.bot.start_adventure("testchannel")
+        self.messages.clear()
+
+        self.bot.enter_dungeon("testchannel")
+
+        adventure = self.bot.adventure_list["testchannel"]
+        self.assertEqual(adventure.location, Adventure.Locations.dungeon)
+        self.assertIn("dungeon", self.last_message())
+
+    def test_stop_adventure_removes_it(self):
+        self.bot.start_adventure("testchannel")
+
+        self.bot.stop_adventure("testchannel")
+
+        self.assertNotIn("testchannel", self.bot.adventure_list)
+        self.assertIn("Adventure stopped.", self.last_message())
+
+    def test_owner_can_start_an_adventure(self):
+        self.chat("!adventure start", display="testchannel")
+
+        self.assertIn("testchannel", self.bot.adventure_list)
+
+    def test_players_can_join_and_attack(self):
+        self.bot.start_adventure("testchannel")
+        self.bot.enter_dungeon("testchannel")
+        self.messages.clear()
+
+        self.chat("!join")
+        adventure = self.bot.adventure_list["testchannel"]
+
+        self.assertIn("Viewer", adventure.player_list)
+        self.assertTrue(any("has joined the party" in text for _, text in self.messages))
+
+        self.messages.clear()
+        self.chat("!attack")
+
+        self.assertNotEqual(self.messages, [])
+        self.assertIn("Viewer", adventure.player_list)
+
+    def test_update_adventures_auto_enters_the_dungeon(self):
+        self.bot.start_adventure("testchannel")
+        adventure = self.bot.adventure_list["testchannel"]
+        adventure.location_time = datetime.datetime.now() - datetime.timedelta(minutes=6)
+        self.messages.clear()
+
+        self.bot.update_adventures()
+
+        self.assertEqual(adventure.location, Adventure.Locations.dungeon)
+        self.assertTrue(any("dungeon" in text for _, text in self.messages))
+
+    def test_update_adventures_runs_boss_attacks(self):
+        self.bot.start_adventure("testchannel")
+        self.bot.enter_dungeon("testchannel")
+        adventure = self.bot.adventure_list["testchannel"]
+        adventure.add_player("Viewer")
+        boss = adventure.boss_list[adventure.level_counter]
+        boss.last_attack_time = None
+        self.messages.clear()
+
+        self.bot.update_adventures()
+
+        self.assertTrue(self.messages)
+        self.assertIsNotNone(boss.last_attack_time)
 
 
 if __name__ == "__main__":
