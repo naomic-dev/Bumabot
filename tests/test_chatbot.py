@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -180,6 +181,131 @@ class ChatBotCommandTests(unittest.TestCase):
             '"Song" by Artist https://open.spotify.com/track/1',
         )
         self.assertIsNone(self.bot.parse_current_track_string({"is_playing": False}))
+
+    def test_add_track_uses_playlist_add_items(self):
+        class FakeSpotify:
+            def __init__(self):
+                self.calls = []
+
+            def playlist_add_items(self, playlist_id, items):
+                self.calls.append((playlist_id, items))
+                return {}
+
+        fake = FakeSpotify()
+        self.bot.spotify = fake
+
+        with mock.patch.object(ChatBot, "SPOTIFY_PLAYLIST_ID", "playlist-1"):
+            self.bot.add_track_to_playlist("track-1", "Viewer")
+
+        self.assertEqual(fake.calls, [("playlist-1", ["track-1"])])
+        self.assertIn("Added song to playlist.", self.last_message())
+
+    def test_search_uses_the_q_parameter(self):
+        class FakeSpotify:
+            def __init__(self):
+                self.kwargs = None
+
+            def search(self, **kwargs):
+                self.kwargs = kwargs
+                return {"tracks": {"items": []}}
+
+        fake = FakeSpotify()
+        self.bot.spotify = fake
+
+        self.bot.search_for_spotify_song("pizza", "Viewer")
+
+        self.assertEqual(fake.kwargs, {"q": "pizza", "type": "track", "limit": 5})
+        self.assertIn("No results found.", self.last_message())
+
+    def test_update_spotify_token_recreates_the_client(self):
+        class FakeCache:
+            def get_cached_token(self):
+                return {"refresh_token": "refresh"}
+
+        class FakeOAuth:
+            def __init__(self):
+                self.cache_handler = FakeCache()
+
+            def validate_token(self, token_info):
+                return {"access_token": "new-token"}
+
+        class FakeSpotify:
+            def __init__(self, auth=None):
+                self.auth = auth
+
+        self.bot.oauth = FakeOAuth()
+        self.bot.spotipy_token = "old-token"
+
+        with mock.patch.object(ChatBot.spotipy, "Spotify", FakeSpotify):
+            self.bot.update_spotify_token()
+
+        self.assertEqual(self.bot.spotipy_token, "new-token")
+        self.assertIsInstance(self.bot.spotify, FakeSpotify)
+        self.assertEqual(self.bot.spotify.auth, "new-token")
+
+    def test_init_spotify_uses_a_cached_token(self):
+        class FakeOAuth:
+            def __init__(self, **kwargs):
+                self.cache_handler = self
+
+            def get_cached_token(self):
+                return {"access_token": "cached-token"}
+
+            def validate_token(self, token_info):
+                return token_info
+
+        class FakeSpotify:
+            def __init__(self, auth=None):
+                self.auth = auth
+
+            def current_user_playing_track(self):
+                return None
+
+        with mock.patch.object(ChatBot, "SPOTIFY_ENABLED", True), mock.patch.object(
+            ChatBot.spotipy.oauth2, "SpotifyOAuth", FakeOAuth
+        ), mock.patch.object(ChatBot.spotipy, "Spotify", FakeSpotify), mock.patch.object(
+            self.bot, "update_now_playing_file"
+        ):
+            self.bot.init_spotify()
+
+        self.assertEqual(self.bot.spotipy_token, "cached-token")
+        self.assertIsInstance(self.bot.spotify, FakeSpotify)
+        self.assertEqual(self.bot.spotify.auth, "cached-token")
+
+    def test_update_current_track_writes_the_overlay(self):
+        playing = {
+            "is_playing": True,
+            "item": {
+                "name": "Song",
+                "artists": [{"name": "Artist"}],
+                "external_urls": {"spotify": "https://open.spotify.com/track/1"},
+            },
+        }
+
+        class FakeSpotify:
+            def current_user_playing_track(self):
+                return playing
+
+        self.bot.spotify = FakeSpotify()
+        self.bot.current_track = None
+
+        with tempfile.TemporaryDirectory() as directory:
+            current_directory = os.getcwd()
+            os.chdir(directory)
+
+            try:
+                self.bot.update_current_track()
+
+                with open("spotify_now_playing.txt", encoding="utf-8") as file:
+                    overlay = file.read()
+            finally:
+                os.chdir(current_directory)
+
+        self.assertEqual(overlay, "Listening to Song - Artist")
+        self.assertEqual(
+            self.bot.current_track,
+            '"Song" by Artist https://open.spotify.com/track/1',
+        )
 
 
 if __name__ == "__main__":

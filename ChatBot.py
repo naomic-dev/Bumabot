@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 # For Spotify integration
 import spotipy
 import spotipy.oauth2
-import spotipy.util as util
 
 # Import local files
 from Settings import (
@@ -33,6 +32,8 @@ import Adventure
 import Memes
 
 log = logging.getLogger(__name__)
+
+SPOTIFY_SCOPE = "user-read-currently-playing playlist-modify-public"
 
 
 class ChatBot:
@@ -73,9 +74,9 @@ class ChatBot:
         self.spotify = None
         self.current_track = None
         self.oauth = None
+        self.spotipy_token = None
 
         self.init_spotify()
-        self.token_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
 
         self.bot_info_sleep_timer = datetime.datetime.now() + datetime.timedelta(minutes=15)
         self.bot_info_message = "Type !commands to see what orders you can give me."
@@ -221,65 +222,64 @@ class ChatBot:
             "color": color,
         }
 
-    def init_spotify(self, refreshing_token: bool = False) -> None:
+    def init_spotify(self) -> None:
         """Initialize the Spotify client and current-track cache."""
         if not SPOTIFY_ENABLED:
-            if not refreshing_token:
-                self.print_with_timestamp("Spotify disabled (missing credentials).")
-
+            log.info("Spotify disabled (missing credentials).")
             return
 
-        # Init Spotipy listening
-        self.spotipy_scope = "user-read-currently-playing playlist-modify-public"
-
-        self.spotipy_token = util.prompt_for_user_token(
-            SPOTIFY_USERNAME,
-            self.spotipy_scope,
+        self.oauth = spotipy.oauth2.SpotifyOAuth(
             client_id=SPOTIFY_CLIENT_ID,
             client_secret=SPOTIFY_CLIENT_SECRET,
             redirect_uri=SPOTIFY_REDIRECT_URI,
-        )
-
-        self.oauth = spotipy.oauth2.SpotifyOAuth(
-            SPOTIFY_CLIENT_ID,
-            SPOTIFY_CLIENT_SECRET,
-            SPOTIFY_REDIRECT_URI,
-            scope=self.spotipy_scope,
+            scope=SPOTIFY_SCOPE,
             cache_path=".cache-{}".format(SPOTIFY_USERNAME),
+            open_browser=False,
         )
 
+        token_info = self.oauth.validate_token(self.oauth.cache_handler.get_cached_token())
+
+        if token_info is None:
+            auth_url = self.oauth.get_authorize_url()
+            log.info("Authorize this app by visiting: %s", auth_url)
+            response = input("Paste the full URL you were redirected to: ")
+            code = self.oauth.parse_response_code(response)
+            token_info = self.oauth.get_access_token(code)
+
+        self.spotipy_token = token_info["access_token"]
         self.spotify = spotipy.Spotify(auth=self.spotipy_token)
-        self.current_track = self.parse_current_track_string(
-            self.spotify.current_user_playing_track()
-        )
 
-        if self.current_track is not None:
-            with open("spotify_now_playing.txt", "w+") as file:
-                file.write(
-                    "Listening to {}".format(
-                        self.parse_current_track_string_for_overlay(
-                            self.spotify.current_user_playing_track()
-                        )
-                    )
-                )
+        try:
+            playing = self.spotify.current_user_playing_track()
+        except Exception as error:
+            log.warning("Spotify track poll failed: %s", error)
+            playing = None
 
-        if not refreshing_token:
-            self.print_with_timestamp("Spotify functionality enabled.")
+        self.current_track = self.parse_current_track_string(playing)
+        self.update_now_playing_file(playing)
+        log.info("Spotify functionality enabled.")
 
     def update_spotify_token(self) -> None:
         """Refresh the cached Spotify token when needed."""
-        if self.oauth is not None:
-            token_info = self.oauth.get_cached_token()
+        if self.oauth is None:
+            return
 
-            if token_info is not None and self.token_expiry <= datetime.datetime.now():
-                new_token_info = self.oauth.refresh_access_token(token_info["refresh_token"])
-                self.spotipy_token = new_token_info["access_token"]
-                self.spotify._auth = self.spotipy_token
+        try:
+            token_info = self.oauth.validate_token(self.oauth.cache_handler.get_cached_token())
+        except Exception as error:
+            log.warning("Spotify token refresh failed: %s", error)
+            return
 
-                self.token_expiry = datetime.datetime.now() + datetime.timedelta(hours=1)
-                self.print_with_timestamp("Refreshed Spotify token.")
-            elif token_info is None:
-                self.print_with_timestamp("Token Info not found.")
+        if token_info is None:
+            log.warning("Spotify token info not found.")
+            return
+
+        new_token = token_info["access_token"]
+
+        if new_token != self.spotipy_token:
+            self.spotipy_token = new_token
+            self.spotify = spotipy.Spotify(auth=self.spotipy_token)
+            log.info("Refreshed Spotify token.")
 
     def parse_current_track_string(
         self, current_track_string: Optional[Dict[str, Any]]
@@ -305,58 +305,30 @@ class ChatBot:
 
         return ""
 
+    def update_now_playing_file(self, playing: Optional[Dict[str, Any]]) -> None:
+        """Write the overlay text for the current playback state."""
+        overlay = self.parse_current_track_string_for_overlay(playing)
+
+        with open("spotify_now_playing.txt", "w+", encoding="utf-8") as file:
+            file.write("Listening to {}".format(overlay) if overlay else "")
+
     def update_current_track(self) -> None:
         """Poll Spotify and update the now-playing overlay."""
+        if self.spotify is None:
+            return
+
         try:
-            temp_current_track = self.parse_current_track_string(
-                self.spotify.current_user_playing_track()
-            )
-
-            if self.current_track != temp_current_track:
-                self.current_track = temp_current_track
-
-                with open("spotify_now_playing.txt", "w+") as file:
-                    if self.current_track is not None:
-                        file.write(
-                            "Listening to {}".format(
-                                self.parse_current_track_string_for_overlay(
-                                    self.spotify.current_user_playing_track()
-                                )
-                            )
-                        )
-                    else:
-                        file.write("")
+            playing = self.spotify.current_user_playing_track()
         except Exception as error:
-            log.debug("Spotify track poll failed: %s", error)
-            token_info = self.oauth.get_cached_token()
+            log.warning("Spotify track poll failed: %s", error)
+            self.update_spotify_token()
+            return
 
-            if token_info is None:
-                self.init_spotify(True)
-            else:
-                new_token_info = self.oauth.refresh_access_token(token_info["refresh_token"])
-                self.spotipy_token = new_token_info["access_token"]
-                self.spotify._auth = self.spotipy_token
+        temp_current_track = self.parse_current_track_string(playing)
 
-            self.print_with_timestamp("Refreshed Spotify token.")
-
-            temp_current_track = self.parse_current_track_string(
-                self.spotify.current_user_playing_track()
-            )
-
-            if self.current_track != temp_current_track:
-                self.current_track = temp_current_track
-
-                with open("spotify_now_playing.txt", "w+") as file:
-                    if self.current_track is not None:
-                        file.write(
-                            "Listening to {}".format(
-                                self.parse_current_track_string_for_overlay(
-                                    self.spotify.current_user_playing_track()
-                                )
-                            )
-                        )
-                    else:
-                        file.write("")
+        if self.current_track != temp_current_track:
+            self.current_track = temp_current_track
+            self.update_now_playing_file(playing)
 
     def print_current_track_to_chat(self) -> None:
         """Announce the current track in chat."""
@@ -371,7 +343,7 @@ class ChatBot:
         if self.spotify is None:
             self.send_text_to_channel(CHANNEL, "Playlist functionality is currently off.")
         else:
-            results = self.spotify.search(query, type="track", limit=5)
+            results = self.spotify.search(q=query, type="track", limit=5)
 
             if len(results["tracks"]["items"]) == 0:
                 self.send_text_to_channel(CHANNEL, "{} No results found.".format(username))
@@ -391,7 +363,7 @@ class ChatBot:
                 CHANNEL, "{} Playlist functionality is currently off.".format(username)
             )
         else:
-            results = self.spotify.search(query, type="track", limit=5)
+            results = self.spotify.search(q=query, type="track", limit=5)
 
             if len(results["tracks"]["items"]) == 1:
                 self.add_track_to_playlist(results["tracks"]["items"][0]["id"], username)
@@ -421,14 +393,13 @@ class ChatBot:
             )
         else:
             try:
-                results = self.spotify.user_playlist_add_tracks(
-                    user=SPOTIFY_USERNAME, playlist_id=SPOTIFY_PLAYLIST_ID, tracks=[track]
-                )
+                self.spotify.playlist_add_items(SPOTIFY_PLAYLIST_ID, items=[track])
+                added = True
             except Exception as error:
                 log.warning("Spotify playlist update failed: %s", error)
-                results = None
+                added = False
 
-            if results is not None:
+            if added:
                 self.send_text_to_channel(CHANNEL, "{} Added song to playlist.".format(username))
             else:
                 self.send_text_to_channel(CHANNEL, "{} Invalid song code.".format(username))
@@ -502,6 +473,7 @@ class ChatBot:
                     self.spotify = None
                     self.current_track = None
                     self.oauth = None
+                    self.spotipy_token = None
 
             # Define commands for broadcaster
             if user_info.get("broadcaster", False):

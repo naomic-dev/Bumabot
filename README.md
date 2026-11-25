@@ -3,7 +3,7 @@
 > A Twitch chat bot built directly on the IRC protocol, with timed messages, Spotify now-playing integration, and an experimental dungeon-crawler module.
 
 ![Python](https://img.shields.io/badge/python-3.8%2B-3776AB?logo=python&logoColor=white)
-![Spotipy](https://img.shields.io/badge/spotipy-2.19-1DB954?logo=spotify&logoColor=white)
+![Spotipy](https://img.shields.io/badge/spotipy-2.23-1DB954?logo=spotify&logoColor=white)
 ![CI](https://github.com/naomic-dev/Bumabot/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -101,8 +101,8 @@ tests/
 
    - Create an application at <https://developer.spotify.com/dashboard>.
    - Add `http://localhost/` as a redirect URI.
-   - Fill in `SPOTIFY_USERNAME`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_PLAYLIST_ID`.
-   - On first start the bot prints an authorization URL and asks for the code; the token is cached in `.cache-<username>`.
+   - Fill in `SPOTIFY_USERNAME`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_PLAYLIST_ID`. The username is used as the local token cache label.
+   - On first start the bot prints an authorization URL and asks for the full URL you were redirected to; the token is cached in `.cache-<username>`.
 
 5. Run:
 
@@ -139,14 +139,12 @@ ruff check .
 
 - **The adventure module is incomplete.** No command currently creates an adventure, so its chat commands are unreachable; the engine has unit tests, but the full flow is not playable from chat.
 - **Plain TCP on port 6667.** Twitch also exposes TLS on 6697; switching to `ssl` is on the roadmap.
-- **Pinned Spotipy API.** The integration targets Spotipy 2.19; newer releases removed `prompt_for_user_token` and `user_playlist_add_tracks`.
-- **Live integration is untested.** The test suite uses a fake IRC socket and a disabled Spotify client; it does not connect to Twitch or Spotify.
+- **Live integration is untested.** The test suite uses a fake IRC socket and mocked Spotify clients; it does not connect to Twitch or Spotify.
 
 ## Roadmap
 
 - [ ] Start an adventure from chat and finish the dungeon flow.
 - [ ] Move to TLS on port 6697.
-- [ ] Update the Spotify integration to the current Spotipy API.
 
 ## License
 
