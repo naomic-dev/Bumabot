@@ -13,7 +13,7 @@ This repository is a cleaned-up reference version. Channel-specific responses an
 
 ## Features
 
-- **Direct Twitch IRC client** — CAP negotiation, OAuth login, channel join/part, PING/PONG keepalive, and IRC tag parsing for display names, badges, and colors.
+- **Direct Twitch IRC client** — TLS on port 6697, CAP negotiation, OAuth login, channel join/part, PING/PONG keepalive, and IRC tag parsing for display names, badges, and colors.
 - **Command handling** — chat commands for the bot, the channel owner, and the broadcaster.
 - **Timed messages** — periodic command hints for newcomers and optional idle-chat prompts.
 - **Spotify integration** — current-track announcements, track search, and playlist additions, with token refresh and a `spotify_now_playing.txt` overlay file.
@@ -43,7 +43,7 @@ The bot also watches chat for "unbench the kench" phrases and responds passively
 
 ```
 Run.py          Entry point
-ChatBot.py      IRC socket, command routing, timed messages, Spotify
+ChatBot.py      IRC socket (TLS), command routing, timed messages, Spotify
 Adventure.py    Experimental dungeon-crawler engine
 Memes.py        Chat response constants
 Settings.py     Environment-based configuration
@@ -92,10 +92,13 @@ tests/
    | `TWITCH_BOT_USERNAME` | The bot account's username (lowercase). |
    | `TWITCH_CHANNEL` | The channel to join (lowercase). |
    | `TWITCH_IRC_HOST` | IRC host. Defaults to `irc.chat.twitch.tv`. |
-   | `TWITCH_IRC_PORT` | IRC port. Defaults to `6667`. |
+   | `TWITCH_IRC_PORT` | IRC port. Defaults to `6697`. |
+   | `TWITCH_IRC_TLS` | Wrap the IRC connection in TLS. Defaults to `true`; set `false` only for a local test server. |
    | `TWITCH_USERNAME_COLOR` | Chat color set after joining. Defaults to `blue`. |
    | `SELF_PROMOTION_MESSAGE` | Optional timed message. Leave empty to disable. |
    | `LOG_LEVEL` | Logging threshold: `DEBUG`, `INFO`, `WARNING`, or `ERROR`. Defaults to `INFO`. |
+
+   TLS is on by default. If your `.env` still sets `TWITCH_IRC_PORT=6667`, move it to `6697`; set `TWITCH_IRC_TLS=false` only when testing against a local server.
 
 4. Optional Spotify setup:
 
@@ -133,18 +136,17 @@ ruff check .
 - **One socket, many timers.** The main loop uses `select` with a one-second timeout, so scheduled messages, Spotify token refreshes, and boss attacks share the same thread as chat parsing.
 - **Spotify is optional.** If the Spotify values are blank, the bot skips OAuth and reports that playlist features are off instead of failing at startup.
 - **Logging instead of print.** Command activity is logged at `INFO`; raw IRC traffic and combat rolls are `DEBUG`.
+- **TLS by default.** Port 6697 protects the OAuth token and chat traffic; `TWITCH_IRC_TLS=false` is only for a local test server.
 - **Adventure is data-driven.** Bosses, drops, and items are plain data in `Adventure.py`; the engine handles combat, credit for kills, equipment, and party wipes.
 
 ## Known limitations
 
 - **The adventure module is incomplete.** No command currently creates an adventure, so its chat commands are unreachable; the engine has unit tests, but the full flow is not playable from chat.
-- **Plain TCP on port 6667.** Twitch also exposes TLS on 6697; switching to `ssl` is on the roadmap.
 - **Live integration is untested.** The test suite uses a fake IRC socket and mocked Spotify clients; it does not connect to Twitch or Spotify.
 
 ## Roadmap
 
 - [ ] Start an adventure from chat and finish the dungeon flow.
-- [ ] Move to TLS on port 6697.
 
 ## License
 

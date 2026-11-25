@@ -69,15 +69,24 @@ class SettingsTests(unittest.TestCase):
 
     def test_default_irc_settings(self):
         result = run_settings(
-            "import Settings; print(Settings.HOST); print(Settings.PORT)",
+            "import Settings; print(Settings.HOST); print(Settings.PORT); print(Settings.USE_TLS)",
             BASE_ENV,
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             result.stdout.strip().splitlines(),
-            ["irc.chat.twitch.tv", "6667"],
+            ["irc.chat.twitch.tv", "6697", "True"],
         )
+
+    def test_tls_can_be_disabled(self):
+        env = dict(BASE_ENV)
+        env["TWITCH_IRC_TLS"] = "false"
+
+        result = run_settings("import Settings; print(Settings.USE_TLS)", env)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "False")
 
     def test_spotify_is_enabled_only_when_all_values_are_present(self):
         env = dict(BASE_ENV)

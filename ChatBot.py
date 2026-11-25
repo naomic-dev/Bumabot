@@ -5,8 +5,11 @@ import logging
 import random
 import select
 import socket
+import ssl
 import time
 from typing import Any, Dict, Optional
+
+import certifi
 
 # For Spotify integration
 import spotipy
@@ -21,6 +24,7 @@ from Settings import (
     CHANNEL,
     USERNAME_COLOR,
     SELF_PROMOTION_MESSAGE,
+    USE_TLS,
     SPOTIFY_ENABLED,
     SPOTIFY_USERNAME,
     SPOTIFY_CLIENT_ID,
@@ -47,15 +51,13 @@ class ChatBot:
         self.channel = CHANNEL
         self.username_color = USERNAME_COLOR
 
-        self.socket = socket.socket()
-
         # Store joined channels here, remove them when leaving, check on each leave to see if we should stop reading
         self.channel_list = []
 
         self.adventure_list = {}
 
         # Connect to Twitch IRC
-        self.socket.connect((self.host, self.port))
+        self.socket = self.open_socket()
 
         # Tell the server we'd like to see users' membership levels
         self.send_encoded("CAP REQ :twitch.tv/membership")
@@ -92,6 +94,22 @@ class ChatBot:
             "Every day is TransgenderPride Pride Day TransgenderPride in this house",
             "PogChamp MODS ARE ASLEEP!! POST YOUR DANK MEMES PogChamp",
         ]
+
+    def open_socket(self) -> socket.socket:
+        """Open the IRC connection, using TLS when configured."""
+        raw_socket = socket.create_connection((self.host, self.port), timeout=10)
+        raw_socket.settimeout(None)
+
+        if not USE_TLS:
+            return raw_socket
+
+        try:
+            context = ssl.create_default_context(cafile=certifi.where())
+            return context.wrap_socket(raw_socket, server_hostname=self.host)
+        except ssl.SSLError as error:
+            raw_socket.close()
+            log.error("TLS handshake with %s:%s failed: %s", self.host, self.port, error)
+            raise
 
     def join_channel(self, channel: str) -> None:
         """Join a channel and wait for the initial NAMES list."""

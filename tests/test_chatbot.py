@@ -11,7 +11,8 @@ os.environ["TWITCH_OAUTH_TOKEN"] = "oauth:test"
 os.environ["TWITCH_BOT_USERNAME"] = "testbot"
 os.environ["TWITCH_CHANNEL"] = "testchannel"
 os.environ["TWITCH_IRC_HOST"] = "irc.chat.twitch.tv"
-os.environ["TWITCH_IRC_PORT"] = "6667"
+os.environ["TWITCH_IRC_PORT"] = "6697"
+os.environ["TWITCH_IRC_TLS"] = "false"
 os.environ["TWITCH_USERNAME_COLOR"] = "blue"
 os.environ["SELF_PROMOTION_MESSAGE"] = ""
 
@@ -45,10 +46,18 @@ class FakeSocket:
 
         return b""
 
+    def settimeout(self, timeout):
+        pass
+
+    def close(self):
+        pass
+
 
 class ChatBotCommandTests(unittest.TestCase):
     def setUp(self):
-        socket_patcher = mock.patch("socket.socket", FakeSocket)
+        socket_patcher = mock.patch(
+            "socket.create_connection", lambda *args, **kwargs: FakeSocket()
+        )
         sleep_patcher = mock.patch("time.sleep", lambda seconds: None)
         socket_patcher.start()
         sleep_patcher.start()
@@ -306,6 +315,38 @@ class ChatBotCommandTests(unittest.TestCase):
             self.bot.current_track,
             '"Song" by Artist https://open.spotify.com/track/1',
         )
+
+    def test_open_socket_uses_plain_socket_when_tls_is_disabled(self):
+        with mock.patch.object(ChatBot, "USE_TLS", False):
+            result = self.bot.open_socket()
+
+        self.assertIsInstance(result, FakeSocket)
+
+    def test_open_socket_wraps_tls_and_verifies_the_host(self):
+        class FakeContext:
+            def __init__(self):
+                self.raw_socket = None
+                self.server_hostname = None
+                self.wrapped_socket = mock.Mock()
+
+            def wrap_socket(self, raw_socket, server_hostname):
+                self.raw_socket = raw_socket
+                self.server_hostname = server_hostname
+                return self.wrapped_socket
+
+        context = FakeContext()
+
+        with mock.patch.object(ChatBot, "USE_TLS", True), mock.patch.object(
+            ChatBot.ssl, "create_default_context", return_value=context
+        ) as create_context, mock.patch.object(
+            ChatBot.certifi, "where", return_value="/tmp/ca.pem"
+        ):
+            result = self.bot.open_socket()
+
+        create_context.assert_called_once_with(cafile="/tmp/ca.pem")
+        self.assertIsInstance(context.raw_socket, FakeSocket)
+        self.assertEqual(context.server_hostname, "irc.chat.twitch.tv")
+        self.assertIs(result, context.wrapped_socket)
 
 
 if __name__ == "__main__":

@@ -21,8 +21,9 @@ def required(name: str) -> str:
 
 
 HOST = os.getenv("TWITCH_IRC_HOST", "irc.chat.twitch.tv")
-PORT = int(os.getenv("TWITCH_IRC_PORT", "6667"))
+PORT = int(os.getenv("TWITCH_IRC_PORT", "6697"))
 USERNAME_COLOR = os.getenv("TWITCH_USERNAME_COLOR", "blue")
+USE_TLS = os.getenv("TWITCH_IRC_TLS", "true").lower() in ("1", "true", "yes", "on")
 
 # The TMI token already includes the oauth: prefix; add it if it was omitted.
 PASS = required("TWITCH_OAUTH_TOKEN")
